@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+**/TestResults/
+*.user
+*.suo
+.vs/
+
+# Runtime uploads and local configuration
+**/wwwroot/uploads/*
+!**/wwwroot/uploads/.gitkeep
+appsettings.Local.json
+appsettings.*.Local.json
+.env
+.env.*
+!.env.example
