@@ -239,6 +239,20 @@ app.UseHttpsRedirection();
 app.UseRouting();
 app.UseCors("corsapp");
 app.UseMiddleware<AuthenticatedCookieOriginMiddleware>(allowedOrigins.AsEnumerable());
+
+app.Use(async (context, next) =>
+{
+    app.Logger.LogWarning(
+        "REQUEST DEBUG | Origin: {Origin} | Host: {Host} | X-Forwarded-Host: {ForwardedHost} | Referer: {Referer}",
+        context.Request.Headers.Origin.ToString(),
+        context.Request.Host.Value,
+        context.Request.Headers["X-Forwarded-Host"].ToString(),
+        context.Request.Headers.Referer.ToString()
+    );
+
+    await next();
+});
+
 app.UseRateLimiter();
 
 var uploadContentTypes = new FileExtensionContentTypeProvider();
