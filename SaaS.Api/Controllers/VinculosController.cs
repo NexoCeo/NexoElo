@@ -110,7 +110,19 @@ namespace SaaS.Api.Controllers
         {
             try
             {
+                if (_planos != null &&
+                    !await _planos.RecursoAtivoAsync(empresaId, "PROFISSIONAL", profissionalId))
+                    return Ok(Array.Empty<ServicoModel>());
+
                 var servicos = await _vinculoRepository.ListarServicosDoProfissional(profissionalId, empresaId);
+                if (_planos != null)
+                {
+                    var ativos = new List<ServicoModel>();
+                    foreach (var servico in servicos)
+                        if (await _planos.RecursoAtivoAsync(empresaId, "SERVICO", servico.Id))
+                            ativos.Add(servico);
+                    return Ok(ativos);
+                }
                 return Ok(servicos);
             }
             catch (ArgumentException ex)
