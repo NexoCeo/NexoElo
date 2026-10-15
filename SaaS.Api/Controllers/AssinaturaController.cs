@@ -48,8 +48,24 @@ namespace SaaS.Api.Controllers
         public async Task<IActionResult> MinhaAssinatura()
         {
             if (!User.TryGetUsuarioId(out var id)) return Unauthorized();
+            var acesso = await _planos.ConsultarAsync(id);
+            var servicos = await _planos.ContarServicosAsync(id);
+            var profissionais = User.IsInRole("EMPRESA")
+                ? await _planos.ContarProfissionaisAsync(id)
+                : 0;
             Response.Headers.CacheControl = "no-store";
-            return Ok(await _planos.ConsultarAsync(id));
+            return Ok(new
+            {
+                acesso.Plano,
+                acesso.AcessoAtivo,
+                acesso.RelatoriosLiberados,
+                acesso.LimiteServicos,
+                acesso.LimiteProfissionais,
+                acesso.DataFim,
+                acesso.Status,
+                ServicosCadastrados = servicos,
+                ProfissionaisVinculados = profissionais
+            });
         }
 
         [HttpPost("checkout")]
