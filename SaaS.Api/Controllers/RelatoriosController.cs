@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SaaS.Api.Security;
+using SaaS.Api.Services;
 using SaaS.Application.Interfaces.Services;
 using SaaS.Domain.Enums;
 
@@ -12,10 +13,12 @@ namespace SaaS.Api.Controllers;
 public sealed class RelatoriosController : ControllerBase
 {
     private readonly IRelatorioService _relatorioService;
+    private readonly PlanoAcessoService _planos;
 
-    public RelatoriosController(IRelatorioService relatorioService)
+    public RelatoriosController(IRelatorioService relatorioService, PlanoAcessoService planos)
     {
         _relatorioService = relatorioService;
+        _planos = planos;
     }
 
     [HttpGet("{tipo}")]
@@ -26,6 +29,10 @@ public sealed class RelatoriosController : ControllerBase
     {
         if (!User.TryGetUsuarioId(out var usuarioId))
             return Unauthorized();
+
+        var acesso = await _planos.ConsultarAsync(usuarioId);
+        if (!acesso.AcessoAtivo || !acesso.RelatoriosLiberados)
+            return StatusCode(403, new { erro = "Relatorios disponiveis a partir do plano Intermediario." });
 
         if (!TipoRelatorioExtensions.TryFromRoute(tipo, out var tipoRelatorio))
         {
