@@ -116,7 +116,7 @@ namespace SaaS.Infrastructure.Services
             };
         }
 
-        public async Task AlterarPlanoAssinatura(int usuarioId, string plano)
+        public async Task AlterarPlanoAssinatura(int usuarioId, string plano, bool reativarRenovacao = false)
         {
             if (usuarioId <= 0)
                 throw new ArgumentException("Usuario invalido.");
@@ -130,14 +130,17 @@ namespace SaaS.Infrastructure.Services
             var usuario = await _assinaturaRepository.ObterAssinaturaUsuario(usuarioId)
                 ?? throw new KeyNotFoundException("Usuario nao encontrado.");
 
-            if (usuario.Status != StatusAssinatura.ATIVA ||
+            if (usuario.Status is not (StatusAssinatura.ATIVA or StatusAssinatura.CANCELAMENTO_PENDENTE) ||
                 string.IsNullOrWhiteSpace(usuario.StripeSubscriptionId))
                 throw new InvalidOperationException("Nao existe assinatura ativa para alterar.");
 
             var servico = new SubscriptionService(Client);
             var atual = await servico.GetAsync(usuario.StripeSubscriptionId);
-            if (atual.Status != "active" || atual.CancelAtPeriodEnd)
+            if (atual.Status != "active")
                 throw new InvalidOperationException("A assinatura precisa estar ativa e sem cancelamento agendado.");
+
+            if (atual.CancelAtPeriodEnd && !reativarRenovacao)
+                throw new InvalidOperationException("Confirme a reativacao da renovacao antes da mudanca.");
 
             if (!string.Equals(atual.CustomerId, usuario.StripeCustomerId, StringComparison.Ordinal))
                 throw new InvalidOperationException("A assinatura nao pertence ao cliente esperado.");
@@ -154,6 +157,7 @@ namespace SaaS.Infrastructure.Services
             var alterada = await servico.UpdateAsync(atual.Id, new SubscriptionUpdateOptions
             {
                 ProrationBehavior = "none",
+                CancelAtPeriodEnd = reativarRenovacao ? false : null,
                 Items = new List<SubscriptionItemOptions>
                 {
                     new() { Id = item.Id, Price = precoDestino, Quantity = 1 }
