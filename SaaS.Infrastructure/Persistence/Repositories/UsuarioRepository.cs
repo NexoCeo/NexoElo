@@ -45,7 +45,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
         public Task<UsuarioModel> InserirUsuario(
             UsuarioModel usuarioModel,
             int? empresaProfissionalId = null,
-            string statusVinculoProfissional = "APROVADO")
+            string statusVinculoProfissional = "PENDENTE")
         {
             return InserirUsuario(
                 usuarioModel,
