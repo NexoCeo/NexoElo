@@ -88,7 +88,9 @@ namespace SaaS.Api.Controllers
                     return BadRequest("Esta rota e exclusiva para o cadastro de profissionais pela empresa.");
 
                 // Cadastro publico nunca aprova o proprio vinculo, mesmo com cookie de login.
-                var statusVinculoProfissional = "PENDENTE";
+                var statusVinculoProfissional = tipoUsuario == TipoUsuario.PROFISSIONAL && !cadastroPelaEmpresa
+                    ? "PENDENTE"
+                    : "APROVADO";
                 // var empresaCriandoProfissional = false;
                 string? senhaProfissionalGerada = null;
                 if (tipoUsuario == TipoUsuario.PROFISSIONAL)
