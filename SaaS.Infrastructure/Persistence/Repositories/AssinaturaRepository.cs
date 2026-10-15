@@ -47,7 +47,9 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     A.DATA_FIM_ASSINATURA,
                     A.STRIPE_CUSTOMER_ID,
                     A.STRIPE_SUBSCRIPTION_ID,
-                    A.STRIPE_PRICE_ID
+                    A.STRIPE_PRICE_ID,
+                    A.DATA_INICIO_ASSINATURA,
+                    U.DATA_CRIACAO_USUARIO
                 FROM USUARIOS U
                 LEFT JOIN ASSINATURAS A ON A.USUARIO_FK = U.ID_USUARIO
                 WHERE U.ID_USUARIO = @Id";
@@ -68,7 +70,9 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 DataFimAssinatura = GetNullableDateTime(reader, "DATA_FIM_ASSINATURA"),
                 StripeCustomerId = GetNullableString(reader, "STRIPE_CUSTOMER_ID"),
                 StripeSubscriptionId = GetNullableString(reader, "STRIPE_SUBSCRIPTION_ID"),
-                StripePriceId = GetNullableString(reader, "STRIPE_PRICE_ID")
+                StripePriceId = GetNullableString(reader, "STRIPE_PRICE_ID"),
+                DataInicioAssinatura = GetNullableDateTime(reader, "DATA_INICIO_ASSINATURA"),
+                DataCriacaoUsuario = GetNullableDateTime(reader, "DATA_CRIACAO_USUARIO")
             };
         }
 
