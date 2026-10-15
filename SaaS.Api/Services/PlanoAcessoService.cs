@@ -37,6 +37,16 @@ public sealed class PlanoAcessoService
             gratis ? fimGratis : registro.DataFimAssinatura, registro.Status.ToString());
     }
 
+    private async Task VerificarPersistenciaAsync()
+    {
+        await using var conn = new NpgsqlConnection(_config.GetConnectionString("DefaultConnection"));
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT to_regclass('public.assinatura_recursos_ativos') IS NOT NULL", conn);
+        if (!Convert.ToBoolean(await cmd.ExecuteScalarAsync()))
+            throw new InvalidOperationException("A migracao dos recursos de assinatura ainda nao foi aplicada.");
+    }
+
     public async Task<List<RecursoAssinatura>> ListarRecursosAsync(int usuarioId, bool empresa)
     {
         await using var conn = new NpgsqlConnection(_config.GetConnectionString("DefaultConnection"));
@@ -69,6 +79,7 @@ public sealed class PlanoAcessoService
     public async Task ValidarSelecaoAsync(int usuarioId, bool empresa, string plano,
         List<int>? servicos, List<int>? profissionais)
     {
+        await VerificarPersistenciaAsync();
         var limiteS = plano switch { "BASICO" => 4, "INTERMEDIARIO" => 8, _ => int.MaxValue };
         var limiteP = plano switch { "BASICO" => 2, "INTERMEDIARIO" => 4, _ => int.MaxValue };
         var itens = await ListarRecursosAsync(usuarioId, empresa);
