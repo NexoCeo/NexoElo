@@ -118,6 +118,43 @@ namespace SaaS.Api.Controllers
             }
         }
 
+        [HttpPost("alterar-plano")]
+        [Authorize(Roles = "EMPRESA,AUTONOMO")]
+        public async Task<IActionResult> AlterarPlano([FromBody] CriarCheckoutAssinaturaModel model)
+        {
+            if (!User.EhProprioUsuario(model.UsuarioId))
+                return Forbid();
+
+            try
+            {
+                await _stripePaymentService.AlterarPlanoAssinatura(model.UsuarioId, model.Plano ?? "");
+                return Ok(new { Mensagem = "Plano atualizado. O novo valor sera aplicado na proxima renovacao." });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { Erro = ex.Message });
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { Erro = "Assinatura nao encontrada." });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Alteracao de plano nao permitida. UsuarioId={UsuarioId}", model.UsuarioId);
+                return Conflict(new { Erro = ex.Message });
+            }
+            catch (StripeException ex)
+            {
+                _logger.LogError(ex, "Erro Stripe ao alterar plano. UsuarioId={UsuarioId}", model.UsuarioId);
+                return StatusCode(502, new { Erro = "A Stripe nao conseguiu atualizar o plano." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro interno ao alterar plano. UsuarioId={UsuarioId}", model.UsuarioId);
+                return StatusCode(500, new { Erro = "Nao foi possivel atualizar o plano." });
+            }
+        }
+
         [HttpPost("portal")]
         [Authorize(Roles = "EMPRESA,AUTONOMO")]
         public async Task<IActionResult> CriarPortal([FromBody] CriarPortalAssinaturaModel model)
