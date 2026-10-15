@@ -6,6 +6,9 @@ namespace SaaS.Application.Interfaces.Repositories
     public interface IAssinaturaRepository
     {
         Task<StatusAssinatura> ObterStatusAssinatura(int usuarioId);
+        Task<bool> ReservarCheckoutAsync(int usuarioId);
+        Task LiberarCheckoutAsync(int usuarioId);
+        Task RegistrarSessaoCheckoutAsync(int usuarioId, string sessionId);
         Task<UsuarioAssinaturaInfoModel?> ObterAssinaturaUsuario(int usuarioId);
         Task<bool> AtualizarStatusAssinatura(int usuarioId, StatusAssinatura novoStatus);
         Task<bool> AtualizarClienteStripe(int usuarioId, string stripeCustomerId);
