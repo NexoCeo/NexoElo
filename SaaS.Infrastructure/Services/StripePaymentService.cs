@@ -57,15 +57,18 @@ namespace SaaS.Infrastructure.Services
         private async Task<StripeCheckoutResponseModel> CriarCheckoutReservadoAsync(
             UsuarioAssinaturaInfoModel usuario, string priceId, string successUrl, string cancelUrl)
         {
-            var assinaturas = await new SubscriptionService(Client).ListAsync(new SubscriptionListOptions
+            if (usuario.StripeCustomerId is not null)
             {
-                Customer = usuario.StripeCustomerId,
-                Status = "all",
-                Limit = 100
-            });
-            if (assinaturas.Data.Any(s => s.Status is "active" or "trialing" or "past_due" or "unpaid" or "incomplete"))
-                throw new InvalidOperationException("Ja existe uma assinatura Stripe em andamento para esta conta.");
-            
+                var assinaturas = await new SubscriptionService(Client).ListAsync(new SubscriptionListOptions
+                {
+                    Customer = usuario.StripeCustomerId,
+                    Status = "all",
+                    Limit = 100
+                });
+                if (assinaturas.Data.Any(s => s.Status is "active" or "trialing" or "past_due" or "unpaid" or "incomplete"))
+                    throw new InvalidOperationException("Ja existe uma assinatura Stripe em andamento para esta conta.");
+                
+                }
             var customerId = usuario.StripeCustomerId;
             if (string.IsNullOrWhiteSpace(customerId))
             {
