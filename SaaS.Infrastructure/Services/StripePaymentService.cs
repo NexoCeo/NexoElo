@@ -236,6 +236,11 @@ namespace SaaS.Infrastructure.Services
                 throw new InvalidOperationException("Configure Stripe:WebhookSecret para validar webhooks da Stripe.");
 
             var stripeEvent = EventUtility.ConstructEvent(json, stripeSignature, endpointSecret);
+            if (string.IsNullOrWhiteSpace(stripeEvent.Id))
+                throw new InvalidOperationException("Evento sem identificador.");
+
+            if (await _assinaturaRepository.WebhookJaProcessadoAsync(stripeEvent.Id))
+                return;
 
             switch (stripeEvent.Type)
             {
@@ -248,6 +253,7 @@ namespace SaaS.Infrastructure.Services
                     await ProcessarAssinaturaAtualizada(stripeEvent);
                     break;
             }
+            await _assinaturaRepository.MarcarWebhookProcessadoAsync(stripeEvent.Id);
         }
 
         private async Task<string> CriarClienteStripe(UsuarioAssinaturaInfoModel usuario)
