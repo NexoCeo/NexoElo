@@ -16,7 +16,7 @@ namespace SaaS.Api.Controllers
     public class ServicoController : ControllerBase
     {
         private readonly IServicoRepository _servicoRepository;
-        private readonly PlanoAcessoService _planos;
+        private readonly PlanoAcessoService? _planos;
         private readonly IArquivoUploadService? _arquivoUploadService;
 
         public ServicoController(
@@ -25,7 +25,7 @@ namespace SaaS.Api.Controllers
             PlanoAcessoService? planos = null)
         {
             _servicoRepository = servicoRepository;
-            _planos = planos ?? throw new ArgumentNullException(nameof(planos));
+            _planos = planos;
             _arquivoUploadService = arquivoUploadService;
         }
 
@@ -38,9 +38,12 @@ namespace SaaS.Api.Controllers
             if (!User.TryGetUsuarioId(out var usuarioId))
                 return Forbid();
 
-            var acesso = await _planos.ConsultarAsync(usuarioId);
-            if (!acesso.AcessoAtivo || await _planos.ContarServicosAsync(usuarioId) >= acesso.LimiteServicos)
-                return StatusCode(403, new { erro = "Assinatura inativa ou limite de servicos atingido." });
+            if (_planos != null)
+            {
+                var acesso = await _planos.ConsultarAsync(usuarioId);
+                if (!acesso.AcessoAtivo || await _planos.ContarServicosAsync(usuarioId) >= acesso.LimiteServicos)
+                    return StatusCode(403, new { erro = "Assinatura inativa ou limite de servicos atingido." });
+            }
 
             servico.UsuarioFk = usuarioId;
             servico.EmpresaId = User.IsInRole(nameof(TipoUsuario.EMPRESA)) ? usuarioId : null;
