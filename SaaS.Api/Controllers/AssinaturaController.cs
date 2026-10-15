@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using SaaS.Api.Security;
 using SaaS.Api.Services;
 using Stripe;
+using Npgsql;
 
 namespace SaaS.Api.Controllers
 {
@@ -172,17 +173,55 @@ namespace SaaS.Api.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> StripeWebhook()
         {
-            var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+            // O corpo bruto e a assinatura sao repassados sem modificacoes.
+            // Nunca registrar payload, Stripe-Signature nem segredos em logs.
             var signature = Request.Headers["Stripe-Signature"].ToString();
+            var traceId = HttpContext.TraceIdentifier;
+            if (string.IsNullOrWhiteSpace(signature))
+            {
+                _logger.LogWarning("Stripe webhook sem cabecalho Stripe-Signature. TraceId={TraceId}", traceId);
+                return BadRequest(new { Erro = "Assinatura do webhook ausente.", Codigo = "STRIPE_SIGNATURE_MISSING" });
+            }
 
+            var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
             try
             {
                 await _stripePaymentService.ProcessarWebhook(json, signature);
+                _logger.LogInformation("Stripe webhook processado. TraceId={TraceId}", traceId);
                 return Ok();
             }
-            catch (Exception)
+            catch (StripeException ex)
             {
-                return BadRequest(new { Erro = "Webhook invalido." });
+                _logger.LogError(ex, "Falha de validacao ou processamento Stripe no webhook. Tipo={ExceptionType}, TraceId={TraceId}",
+                    ex.GetType().Name, traceId);
+                return BadRequest(new { Erro = "Evento Stripe rejeitado.", Codigo = "STRIPE_EVENT_INVALID", TraceId = traceId });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogError(ex, "Configuracao ou formato de evento Stripe invalido. Tipo={ExceptionType}, TraceId={TraceId}",
+                    ex.GetType().Name, traceId);
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    new { Erro = "Nao foi possivel processar o evento.", Codigo = "STRIPE_EVENT_PROCESSING", TraceId = traceId });
+            }
+            catch (PostgresException ex)
+            {
+                _logger.LogError(ex, "Falha PostgreSQL ao sincronizar assinatura Stripe. SqlState={SqlState}, Constraint={Constraint}, TraceId={TraceId}",
+                    ex.SqlState, ex.ConstraintName, traceId);
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    new { Erro = "Falha ao sincronizar a assinatura.", Codigo = "SUBSCRIPTION_DATABASE_ERROR", TraceId = traceId });
+            }
+            catch (NpgsqlException ex)
+            {
+                _logger.LogError(ex, "Falha de conexao ou operacao PostgreSQL no webhook. TraceId={TraceId}", traceId);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    new { Erro = "Banco de dados temporariamente indisponivel.", Codigo = "SUBSCRIPTION_DATABASE_UNAVAILABLE", TraceId = traceId });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Falha inesperada ao processar webhook Stripe. Tipo={ExceptionType}, TraceId={TraceId}",
+                    ex.GetType().Name, traceId);
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    new { Erro = "Falha interna ao processar o evento.", Codigo = "STRIPE_WEBHOOK_INTERNAL_ERROR", TraceId = traceId });
             }
         }
     }
