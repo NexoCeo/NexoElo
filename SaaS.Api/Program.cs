@@ -11,6 +11,7 @@ using Microsoft.OpenApi.Models;
 using SaaS.Application.Interfaces.Repositories;
 using SaaS.Application.Interfaces.Services;
 using SaaS.Api.Hubs;
+using SaaS.Api.Services;
 using SaaS.Domain.Enums;
 using SaaS.Infrastructure;
 using SaaS.Infrastructure.Configuration;
@@ -76,6 +77,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddSignalR();
+builder.Services.AddScoped<PlanoAcessoService>();
 builder.Services.AddProblemDetails(options =>
 {
     options.CustomizeProblemDetails = context =>
