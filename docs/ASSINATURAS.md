@@ -58,3 +58,13 @@ A migration cria `ASSINATURA_RECURSOS_ATIVOS` no PostgreSQL. Ela nao e aplicada 
 - Para planos sem excedentes, a selecao restritiva anterior e removida.
 
 **Recomendado antes de producao:** testar simultaneidade de alteracao de plano, associacao de profissionais e criacao de agendamentos; reforcar serializacao no banco e reconciliacao Stripe/PostgreSQL para eventos concorrentes.
+
+## Protecao contra assinaturas duplicadas
+
+Antes de usar o novo checkout e os webhooks, aplicar no PostgreSQL: `database/migrations/20261015_integridade_cobranca.sql`. O Render nao aplica essa migration automaticamente.
+
+O checkout exige uma reserva por usuario (35 minutos), expira a sessao Stripe em 30 minutos e consulta assinaturas existentes no mesmo cliente Stripe. O backend grava IDs de eventos processados e protege a assinatura local contra substituicao por outra assinatura Stripe ativa.
+
+Mudancas de plano com cancelamento programado so reativam a cobranca mediante confirmacao explicita. Nenhuma assinatura duplicada existente e cancelada automaticamente: conferir as contas na Stripe antes de reconciliar.
+
+Recomenda-se testar concorrencia, renovacao, retransmissao e cancelamento antes de cobrar em producao.
