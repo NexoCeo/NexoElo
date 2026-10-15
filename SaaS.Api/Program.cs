@@ -263,6 +263,7 @@ app.UseStaticFiles(new StaticFileOptions
 app.UseMiddleware<MissingUploadFallbackMiddleware>();
 
 app.UseAuthentication();
+app.UseMiddleware<AssinaturaOperacionalMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<AgendaHub>("/hubs/agenda");
