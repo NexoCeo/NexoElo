@@ -118,6 +118,14 @@ namespace SaaS.Api.Controllers
             }
         }
 
+        [HttpGet("recursos")]
+        [Authorize(Roles = "EMPRESA,AUTONOMO")]
+        public async Task<IActionResult> ListarRecursos()
+        {
+            if (!User.TryGetUsuarioId(out var id)) return Unauthorized();
+            return Ok(await _planos.ListarRecursosAsync(id,User.IsInRole("EMPRESA")));
+        }
+
         [HttpPost("alterar-plano")]
         [Authorize(Roles = "EMPRESA,AUTONOMO")]
         public async Task<IActionResult> AlterarPlano([FromBody] CriarCheckoutAssinaturaModel model)
@@ -127,7 +135,14 @@ namespace SaaS.Api.Controllers
 
             try
             {
-                await _stripePaymentService.AlterarPlanoAssinatura(model.UsuarioId, model.Plano ?? "");
+                var plano = model.Plano?.Trim().ToUpperInvariant() ?? "";
+                if (plano is not ("BASICO" or "INTERMEDIARIO" or "AVANCADO"))
+                    return BadRequest(new { Erro = "Plano invalido." });
+                await _planos.ValidarSelecaoAsync(model.UsuarioId, User.IsInRole("EMPRESA"), plano,
+                    model.ServicosAtivos, model.ProfissionaisAtivos);
+                await _stripePaymentService.AlterarPlanoAssinatura(model.UsuarioId, plano);
+                await _planos.SalvarSelecaoAsync(model.UsuarioId, User.IsInRole("EMPRESA"), plano,
+                    model.ServicosAtivos, model.ProfissionaisAtivos);
                 return Ok(new { Mensagem = "Plano atualizado. O novo valor sera aplicado na proxima renovacao." });
             }
             catch (ArgumentException ex)
