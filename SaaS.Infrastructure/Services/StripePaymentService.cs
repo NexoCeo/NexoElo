@@ -85,6 +85,53 @@ namespace SaaS.Infrastructure.Services
             };
         }
 
+        public async Task AlterarPlanoAssinatura(int usuarioId, string plano)
+        {
+            if (usuarioId <= 0)
+                throw new ArgumentException("Usuario invalido.");
+
+            var planoNormalizado = plano?.Trim().ToUpperInvariant();
+            if (planoNormalizado is not ("BASICO" or "INTERMEDIARIO" or "AVANCADO"))
+                throw new ArgumentException("Plano invalido.");
+
+            var precoDestino = ObterConfiguracao($"Stripe:Prices:{planoNormalizado}",
+                "Preco Stripe do plano nao configurado.");
+            var usuario = await _assinaturaRepository.ObterAssinaturaUsuario(usuarioId)
+                ?? throw new KeyNotFoundException("Usuario nao encontrado.");
+
+            if (usuario.Status != StatusAssinatura.ATIVA ||
+                string.IsNullOrWhiteSpace(usuario.StripeSubscriptionId))
+                throw new InvalidOperationException("Nao existe assinatura ativa para alterar.");
+
+            var servico = new SubscriptionService(Client);
+            var atual = await servico.GetAsync(usuario.StripeSubscriptionId);
+            if (atual.Status != "active" || atual.CancelAtPeriodEnd)
+                throw new InvalidOperationException("A assinatura precisa estar ativa e sem cancelamento agendado.");
+
+            if (!string.Equals(atual.CustomerId, usuario.StripeCustomerId, StringComparison.Ordinal))
+                throw new InvalidOperationException("A assinatura nao pertence ao cliente esperado.");
+
+            var item = atual.Items?.Data?.SingleOrDefault();
+            if (item == null)
+                throw new InvalidOperationException("A assinatura nao possui exatamente um item.");
+
+            if (item.Price?.Id == precoDestino)
+                throw new InvalidOperationException("Este ja e o plano atual.");
+
+            // Sem cobranca proporcional imediata. O novo valor passa a valer na
+            // proxima renovacao, enquanto os recursos mudam apos confirmacao Stripe.
+            var alterada = await servico.UpdateAsync(atual.Id, new SubscriptionUpdateOptions
+            {
+                ProrationBehavior = "none",
+                Items = new List<SubscriptionItemOptions>
+                {
+                    new() { Id = item.Id, Price = precoDestino, Quantity = 1 }
+                }
+            });
+
+            await SincronizarAssinatura(alterada, usuarioId);
+        }
+
         public async Task<StripePortalResponseModel> CriarPortalAssinatura(CriarPortalAssinaturaModel model)
         {
             if (model.UsuarioId <= 0)
