@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using SaaS.Api.Hubs;
 using SaaS.Api.Security;
+using SaaS.Api.Services;
 
 namespace SaaS.Api.Controllers
 {
@@ -19,17 +20,20 @@ namespace SaaS.Api.Controllers
         private readonly IVinculoRepository _vinculoRepository;
         private readonly IHubContext<AgendaHub> _agendaHub;
         private readonly ILogger<AgendamentoController> _logger;
+        private readonly PlanoAcessoService? _planos;
 
         public AgendamentoController(
             IAgendamentoRepository agendamentoRepository,
             IVinculoRepository vinculoRepository,
             IHubContext<AgendaHub> agendaHub,
-            ILogger<AgendamentoController> logger)
+            ILogger<AgendamentoController> logger,
+            PlanoAcessoService? planos = null)
         {
             _agendamentoRepository = agendamentoRepository;
             _vinculoRepository = vinculoRepository;
             _agendaHub = agendaHub;
             _logger = logger;
+            _planos = planos;
         }
 
         // POST: api/Agendamento
@@ -62,6 +66,15 @@ namespace SaaS.Api.Controllers
                 if (tipoUsuario == TipoUsuario.EMPRESA && criarAgendamento.ProfissionalId.GetValueOrDefault() <= 0)
                 {
                     return BadRequest(new { erro = "Selecione um profissional vinculado a empresa." });
+                }
+
+                if (_planos != null)
+                {
+                    if (!await _planos.RecursoAtivoAsync(criarAgendamento.ResponsavelId, "SERVICO", criarAgendamento.ServicoId))
+                        return Conflict(new { erro = "Este servico esta indisponivel no plano atual." });
+                    if (tipoUsuario == TipoUsuario.EMPRESA &&
+                        !await _planos.RecursoAtivoAsync(criarAgendamento.ResponsavelId, "PROFISSIONAL", criarAgendamento.ProfissionalId!.Value))
+                        return Conflict(new { erro = "Este profissional esta indisponivel no plano atual." });
                 }
 
                 var novoAgendamento = new AgendamentoModel
@@ -128,6 +141,15 @@ namespace SaaS.Api.Controllers
 
             try
             {
+                if (_planos != null)
+                {
+                    if (!await _planos.RecursoAtivoAsync(responsavelId,"SERVICO",servicoId))
+                        return Ok(Array.Empty<HorarioDisponivelModel>());
+                    if (profissionalId.HasValue &&
+                        !await _planos.RecursoAtivoAsync(responsavelId,"PROFISSIONAL",profissionalId.Value))
+                        return Ok(Array.Empty<HorarioDisponivelModel>());
+                }
+
                 var horarios = await _agendamentoRepository.ListarHorariosDisponiveis(
                     responsavelId,
                     profissionalId,
