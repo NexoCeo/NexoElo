@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using SaaS.Application.Interfaces.Repositories;
 using SaaS.Domain.Models;
 using SaaS.Api.Security;
+using SaaS.Api.Services;
 
 namespace SaaS.Api.Controllers
 {
@@ -12,10 +13,12 @@ namespace SaaS.Api.Controllers
     public class VinculosController : ControllerBase
     {
         private readonly IVinculoRepository _vinculoRepository;
+        private readonly PlanoAcessoService _planos;
 
-        public VinculosController(IVinculoRepository vinculoRepository)
+        public VinculosController(IVinculoRepository vinculoRepository, PlanoAcessoService planos)
         {
             _vinculoRepository = vinculoRepository;
+            _planos = planos;
         }
 
         [HttpGet("profissionais/empresa/{empresaId:int}")]
@@ -63,6 +66,13 @@ namespace SaaS.Api.Controllers
             var status = request?.Status?.Trim().ToUpperInvariant();
             if (status is not ("APROVADO" or "RECUSADO"))
                 return BadRequest(new { message = "Informe APROVADO ou RECUSADO." });
+
+            if (status == "APROVADO")
+            {
+                var acesso = await _planos.ConsultarAsync(empresaId);
+                if (!acesso.AcessoAtivo || await _planos.ContarProfissionaisAsync(empresaId) >= acesso.LimiteProfissionais)
+                    return StatusCode(403, new { message = "Assinatura inativa ou limite de profissionais atingido." });
+            }
 
             var atualizado = await _vinculoRepository.ResponderSolicitacaoAsync(
                 solicitacaoId,
