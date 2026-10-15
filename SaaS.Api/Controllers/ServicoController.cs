@@ -69,9 +69,12 @@ namespace SaaS.Api.Controllers
             if (!User.TryGetUsuarioId(out var usuarioId))
                 return Forbid();
 
-            var acesso = await _planos.ConsultarAsync(usuarioId);
-            if (!acesso.AcessoAtivo || await _planos.ContarServicosAsync(usuarioId) >= acesso.LimiteServicos)
-                return StatusCode(403, new { erro = "Assinatura inativa ou limite de servicos atingido." });
+            if (_planos != null)
+            {
+                var acesso = await _planos.ConsultarAsync(usuarioId);
+                if (!acesso.AcessoAtivo || await _planos.ContarServicosAsync(usuarioId) >= acesso.LimiteServicos)
+                    return StatusCode(403, new { erro = "Assinatura inativa ou limite de servicos atingido." });
+            }
 
             string? caminhoImagem = null;
 
