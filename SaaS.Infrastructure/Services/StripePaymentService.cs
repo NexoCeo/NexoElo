@@ -11,18 +11,14 @@ namespace SaaS.Infrastructure.Services
     {
         private readonly IAssinaturaRepository _assinaturaRepository;
         private readonly IConfiguration _configuration;
-        private readonly StripeClient _stripeClient;
+        private StripeClient? _stripeClient;
+        private StripeClient Client => _stripeClient ??= new StripeClient(
+            ObterConfiguracao("Stripe:SecretKey", "Configure Stripe:SecretKey para usar pagamentos via Stripe."));
 
         public StripePaymentService(IAssinaturaRepository assinaturaRepository, IConfiguration configuration)
         {
             _assinaturaRepository = assinaturaRepository;
             _configuration = configuration;
-
-            var secretKey = _configuration["Stripe:SecretKey"];
-            if (string.IsNullOrWhiteSpace(secretKey))
-                throw new InvalidOperationException("Configure Stripe:SecretKey para usar pagamentos via Stripe.");
-
-            _stripeClient = new StripeClient(secretKey);
         }
 
         public async Task<StripeCheckoutResponseModel> CriarCheckoutAssinatura(CriarCheckoutAssinaturaModel model)
@@ -75,7 +71,7 @@ namespace SaaS.Infrastructure.Services
                 }
             };
 
-            var service = new Stripe.Checkout.SessionService(_stripeClient);
+            var service = new Stripe.Checkout.SessionService(Client);
             var session = await service.CreateAsync(options);
 
             // Checkout nao libera nem suspende o periodo gratuito.
@@ -112,7 +108,7 @@ namespace SaaS.Infrastructure.Services
                 ReturnUrl = returnUrl
             };
 
-            var service = new Stripe.BillingPortal.SessionService(_stripeClient);
+            var service = new Stripe.BillingPortal.SessionService(Client);
             var session = await service.CreateAsync(options);
 
             return new StripePortalResponseModel
@@ -133,7 +129,7 @@ namespace SaaS.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(usuario.StripeSubscriptionId))
                 throw new InvalidOperationException("Usuário não possui assinatura Stripe vinculada.");
 
-            var service = new SubscriptionService(_stripeClient);
+            var service = new SubscriptionService(Client);
             Subscription subscription;
 
             if (model.CancelarAoFimDoPeriodo)
@@ -179,7 +175,7 @@ namespace SaaS.Infrastructure.Services
 
         private async Task<string> CriarClienteStripe(UsuarioAssinaturaInfoModel usuario)
         {
-            var customerService = new CustomerService(_stripeClient);
+            var customerService = new CustomerService(Client);
             var customer = await customerService.CreateAsync(new CustomerCreateOptions
             {
                 Name = usuario.Nome,
@@ -202,7 +198,7 @@ namespace SaaS.Infrastructure.Services
             if (!usuarioId.HasValue || string.IsNullOrWhiteSpace(session.SubscriptionId))
                 return;
 
-            var subscriptionService = new SubscriptionService(_stripeClient);
+            var subscriptionService = new SubscriptionService(Client);
             var subscription = await subscriptionService.GetAsync(session.SubscriptionId);
 
             await SincronizarAssinatura(subscription, usuarioId.Value);
