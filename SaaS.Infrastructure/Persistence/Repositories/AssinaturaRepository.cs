@@ -205,6 +205,42 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             return affected > 0;
         }
 
+        public async Task<bool> ReservarCheckoutAsync(int usuarioId)
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                INSERT INTO ASSINATURA_CHECKOUT_LOCK (USUARIO_FK, EXPIRA_EM)
+                VALUES (@id, NOW() + INTERVAL '35 minutes')
+                ON CONFLICT (USUARIO_FK) DO UPDATE
+                SET EXPIRA_EM = EXCLUDED.EXPIRA_EM, STRIPE_SESSION_ID = NULL
+                WHERE ASSINATURA_CHECKOUT_LOCK.EXPIRA_EM < NOW()
+                RETURNING USUARIO_FK",conn);
+            cmd.Parameters.AddWithValue("id",usuarioId);
+            return await cmd.ExecuteScalarAsync()!=null;
+        }
+
+        public async Task LiberarCheckoutAsync(int usuarioId)
+        {
+            await using var conn=new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
+            await using var cmd=new NpgsqlCommand("DELETE FROM ASSINATURA_CHECKOUT_LOCK WHERE USUARIO_FK=@id",conn);
+            cmd.Parameters.AddWithValue("id",usuarioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        public async Task RegistrarSessaoCheckoutAsync(int usuarioId,string sessionId)
+        {
+            await using var conn=new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
+            await using var cmd=new NpgsqlCommand(@"
+                UPDATE ASSINATURA_CHECKOUT_LOCK SET STRIPE_SESSION_ID=@sid
+                WHERE USUARIO_FK=@id",conn);
+            cmd.Parameters.AddWithValue("sid",sessionId);
+            cmd.Parameters.AddWithValue("id",usuarioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         private static string? GetNullableString(NpgsqlDataReader reader, string column)
         {
             var ordinal = reader.GetOrdinal(column);
