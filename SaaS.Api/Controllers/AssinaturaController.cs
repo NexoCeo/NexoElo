@@ -126,6 +126,28 @@ namespace SaaS.Api.Controllers
             return Ok(await _planos.ListarRecursosAsync(id,User.IsInRole("EMPRESA")));
         }
 
+        [HttpPut("recursos")]
+        [Authorize(Roles = "EMPRESA,AUTONOMO")]
+        public async Task<IActionResult> AtualizarRecursosAtivos([FromBody] CriarCheckoutAssinaturaModel model)
+        {
+            if (!User.EhProprioUsuario(model.UsuarioId)) return Forbid();
+            var atual = await _planos.ConsultarAsync(model.UsuarioId);
+            if (!atual.AcessoAtivo || atual.Plano is not ("BASICO" or "INTERMEDIARIO" or "AVANCADO"))
+                return Conflict(new { Erro = "Assinatura ativa obrigatoria para regularizar recursos." });
+            try
+            {
+                await _planos.ValidarSelecaoAsync(model.UsuarioId, User.IsInRole("EMPRESA"), atual.Plano,
+                    model.ServicosAtivos, model.ProfissionaisAtivos);
+                await _planos.SalvarSelecaoAsync(model.UsuarioId, User.IsInRole("EMPRESA"), atual.Plano,
+                    model.ServicosAtivos, model.ProfissionaisAtivos);
+                return NoContent();
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { Erro = ex.Message });
+            }
+        }
+
         [HttpPost("alterar-plano")]
         [Authorize(Roles = "EMPRESA,AUTONOMO")]
         public async Task<IActionResult> AlterarPlano([FromBody] CriarCheckoutAssinaturaModel model)
