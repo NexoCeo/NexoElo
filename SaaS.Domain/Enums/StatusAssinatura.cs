@@ -7,7 +7,8 @@ namespace SaaS.Domain.Enums
         EXPIRADO,
         CANCELADA,
         PENDENTE,
-        CANCELAMENTO_PENDENTE
+        CANCELAMENTO_PENDENTE,
+        TRIAL
     }
 
     public static class StatusAssinaturaExtensions
