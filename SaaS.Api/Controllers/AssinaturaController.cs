@@ -169,7 +169,7 @@ namespace SaaS.Api.Controllers
                     return BadRequest(new { Erro = "Plano invalido." });
                 await _planos.ValidarSelecaoAsync(model.UsuarioId, User.IsInRole("EMPRESA"), plano,
                     model.ServicosAtivos, model.ProfissionaisAtivos);
-                await _stripePaymentService.AlterarPlanoAssinatura(model.UsuarioId, plano);
+                await _stripePaymentService.AlterarPlanoAssinatura(model.UsuarioId, plano, model.ReativarRenovacao);
                 await _planos.SalvarSelecaoAsync(model.UsuarioId, User.IsInRole("EMPRESA"), plano,
                     model.ServicosAtivos, model.ProfissionaisAtivos);
                 return Ok(new { Mensagem = "Plano atualizado. O novo valor sera aplicado na proxima renovacao." });
