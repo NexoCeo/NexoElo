@@ -297,6 +297,9 @@ namespace SaaS.Infrastructure.Services
             if (stripeEvent.Data.Object is not Subscription subscription)
                 return;
 
+            if (stripeEvent.Type != "customer.subscription.deleted")
+                subscription = await new SubscriptionService(Client).GetAsync(subscription.Id);
+
             var usuarioId = ObterUsuarioId(subscription.Metadata, null);
             if (usuarioId.HasValue)
             {
