@@ -13,9 +13,9 @@ namespace SaaS.Api.Controllers
     public class VinculosController : ControllerBase
     {
         private readonly IVinculoRepository _vinculoRepository;
-        private readonly PlanoAcessoService _planos;
+        private readonly PlanoAcessoService? _planos;
 
-        public VinculosController(IVinculoRepository vinculoRepository, PlanoAcessoService planos)
+        public VinculosController(IVinculoRepository vinculoRepository, PlanoAcessoService? planos = null)
         {
             _vinculoRepository = vinculoRepository;
             _planos = planos;
@@ -67,7 +67,7 @@ namespace SaaS.Api.Controllers
             if (status is not ("APROVADO" or "RECUSADO"))
                 return BadRequest(new { message = "Informe APROVADO ou RECUSADO." });
 
-            if (status == "APROVADO")
+            if (status == "APROVADO" && _planos != null)
             {
                 var acesso = await _planos.ConsultarAsync(empresaId);
                 if (!acesso.AcessoAtivo || await _planos.ContarProfissionaisAsync(empresaId) >= acesso.LimiteProfissionais)
