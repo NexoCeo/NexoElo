@@ -6,6 +6,8 @@ namespace SaaS.Application.Interfaces.Repositories
     public interface IAssinaturaRepository
     {
         Task<StatusAssinatura> ObterStatusAssinatura(int usuarioId);
+        Task<bool> WebhookJaProcessadoAsync(string eventId);
+        Task MarcarWebhookProcessadoAsync(string eventId);
         Task<bool> ReservarCheckoutAsync(int usuarioId);
         Task LiberarCheckoutAsync(int usuarioId);
         Task RegistrarSessaoCheckoutAsync(int usuarioId, string sessionId);
