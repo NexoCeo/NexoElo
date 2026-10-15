@@ -41,3 +41,20 @@ O portal Stripe precisa permitir atualizações de assinatura, caso deseje que o
 ## Compatibilidade
 
 Assinaturas antigas cujo `STRIPE_PRICE_ID` não corresponda a um dos três IDs configurados serão classificadas como `SEM_PLANO`. Faça o mapeamento/migração de clientes antigos antes de habilitar cobrança para a base de produção.
+
+## Downgrade: selecao nao destrutiva de recursos
+
+**Migration obrigatoria antes do primeiro downgrade:**
+`database/migrations/20261015_selecao_recursos_downgrade.sql`.
+A migration cria `ASSINATURA_RECURSOS_ATIVOS` no PostgreSQL. Ela nao e aplicada automaticamente pelo deploy; executar com o cliente SQL conectado ao banco correto. A API bloqueia a troca de plano enquanto a tabela nao existir.
+
+- A pagina Minha assinatura lista recursos e solicita a escolha quando servicos ou profissionais ultrapassarem os limites do plano de destino.
+- `GET /api/Assinatura/recursos` lista todos os recursos de propriedade da conta com estado `Ativo`.
+- `POST /api/Assinatura/alterar-plano` recebe `ServicosAtivos` e `ProfissionaisAtivos` com os IDs dos recursos escolhidos (exatamente o limite quando ha excedente).
+- `PUT /api/Assinatura/recursos` permite refazer a selecao dentro do plano vigente sem modificar preco.
+- As selecoes persistidas filtram a listagem publica de servicos, os servicos por profissional, a disponibilidade e a criacao de novos agendamentos.
+- Agendamentos historicos continuam no banco. Recursos excedentes nao sao excluidos.
+- Atualizacao do Stripe e gravacao no PostgreSQL nao formam transacao distribuida. Em caso de falha entre as etapas, o endpoint de regularizacao permite reconstruir a selecao. Nao excluir registros manualmente.
+- Para planos sem excedentes, a selecao restritiva anterior e removida.
+
+**Recomendado antes de producao:** testar simultaneidade de alteracao de plano, associacao de profissionais e criacao de agendamentos; reforcar serializacao no banco e reconciliacao Stripe/PostgreSQL para eventos concorrentes.
