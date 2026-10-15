@@ -5,6 +5,7 @@ using SaaS.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SaaS.Api.Security;
+using SaaS.Api.Services;
 
 namespace SaaS.Api.Controllers
 {
@@ -14,13 +15,16 @@ namespace SaaS.Api.Controllers
     {
         private readonly IAssinaturaRepository _assinaturaRepository;
         private readonly IStripePaymentService _stripePaymentService;
+        private readonly PlanoAcessoService _planos;
 
         public AssinaturaController(
             IAssinaturaRepository assinaturaRepository,
-            IStripePaymentService stripePaymentService)
+            IStripePaymentService stripePaymentService,
+            PlanoAcessoService planos)
         {
             _assinaturaRepository = assinaturaRepository;
             _stripePaymentService = stripePaymentService;
+            _planos = planos;
         }
 
         [HttpGet("{id}")]
@@ -34,11 +38,18 @@ namespace SaaS.Api.Controllers
             if (assinatura == null)
                 return NotFound("Usuario nao encontrado");
 
-            return Ok(new
-            {
-                Status = assinatura.Status,
-                assinatura.DataFimAssinatura
-            });
+            var acesso = await _planos.ConsultarAsync(id);
+            Response.Headers.CacheControl = "no-store";
+            return Ok(acesso);
+        }
+
+        [HttpGet("minha")]
+        [Authorize(Roles = "EMPRESA,AUTONOMO")]
+        public async Task<IActionResult> MinhaAssinatura()
+        {
+            if (!User.TryGetUsuarioId(out var id)) return Unauthorized();
+            Response.Headers.CacheControl = "no-store";
+            return Ok(await _planos.ConsultarAsync(id));
         }
 
         [HttpPost("checkout")]
