@@ -1,0 +1,21 @@
+name: Build and test .NET
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - name: Restore
+        run: dotnet restore SaaS.Api.Tests/SaaS.Api.Tests.csproj
+      - name: Build
+        run: dotnet build SaaS.Api.Tests/SaaS.Api.Tests.csproj --no-restore --configuration Release
+      - name: Test
+        run: dotnet test SaaS.Api.Tests/SaaS.Api.Tests.csproj --no-build --configuration Release --verbosity normal
