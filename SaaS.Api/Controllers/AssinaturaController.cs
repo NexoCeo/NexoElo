@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SaaS.Api.Security;
 using SaaS.Api.Services;
+using Stripe;
 
 namespace SaaS.Api.Controllers
 {
@@ -16,15 +17,18 @@ namespace SaaS.Api.Controllers
         private readonly IAssinaturaRepository _assinaturaRepository;
         private readonly IStripePaymentService _stripePaymentService;
         private readonly PlanoAcessoService _planos;
+        private readonly ILogger<AssinaturaController> _logger;
 
         public AssinaturaController(
             IAssinaturaRepository assinaturaRepository,
             IStripePaymentService stripePaymentService,
-            PlanoAcessoService planos)
+            PlanoAcessoService planos,
+            ILogger<AssinaturaController> logger)
         {
             _assinaturaRepository = assinaturaRepository;
             _stripePaymentService = stripePaymentService;
             _planos = planos;
+            _logger = logger;
         }
 
         [HttpGet("{id}")]
@@ -84,9 +88,32 @@ namespace SaaS.Api.Controllers
             {
                 return NotFound(ex.Message);
             }
-            catch (Exception)
+            catch (ArgumentException ex)
             {
-                return BadRequest(new { Erro = "Nao foi possivel iniciar o checkout." });
+                return BadRequest(new { Erro = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Configuracao ou estado invalido ao criar checkout de assinatura");
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    Erro = "O pagamento nao esta disponivel no momento. Verifique a configuracao de precos, URLs e credenciais Stripe no servidor.",
+                    Codigo = "STRIPE_CONFIGURACAO"
+                });
+            }
+            catch (StripeException ex)
+            {
+                _logger.LogError(ex, "Stripe recusou a criacao do checkout");
+                return StatusCode(StatusCodes.Status502BadGateway, new
+                {
+                    Erro = "Nao foi possivel criar a sessao de pagamento com a Stripe. Tente novamente ou fale com o suporte.",
+                    Codigo = "STRIPE_INDISPONIVEL"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro inesperado ao iniciar checkout de assinatura");
+                return StatusCode(StatusCodes.Status500InternalServerError, new { Erro = "Erro interno ao iniciar o checkout." });
             }
         }
 
