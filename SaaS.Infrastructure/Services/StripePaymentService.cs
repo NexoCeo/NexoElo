@@ -30,13 +30,19 @@ namespace SaaS.Infrastructure.Services
             if (model.UsuarioId <= 0)
                 throw new ArgumentException("UsuarioId inválido.");
 
-            var priceId = ObterConfiguracao("Stripe:DefaultPriceId", "PriceId da assinatura não configurado.");
+            var plano = model.Plano?.Trim().ToUpperInvariant();
+            if (plano is not ("BASICO" or "INTERMEDIARIO" or "AVANCADO"))
+                throw new ArgumentException("Selecione um plano valido: BASICO, INTERMEDIARIO ou AVANCADO.");
+            var priceId = ObterConfiguracao($"Stripe:Prices:{plano}", "Preco Stripe do plano nao configurado.");
             var successUrl = ObterConfiguracao("Stripe:SuccessUrl", "SuccessUrl da Stripe não configurada.");
             var cancelUrl = ObterConfiguracao("Stripe:CancelUrl", "CancelUrl da Stripe não configurada.");
 
             var usuario = await _assinaturaRepository.ObterAssinaturaUsuario(model.UsuarioId);
             if (usuario == null)
                 throw new KeyNotFoundException("Usuário não encontrado.");
+
+            if (usuario.Status is StatusAssinatura.ATIVA or StatusAssinatura.CANCELAMENTO_PENDENTE)
+                throw new InvalidOperationException("Utilize o portal para gerenciar uma assinatura existente.");
 
             var customerId = usuario.StripeCustomerId;
             if (string.IsNullOrWhiteSpace(customerId))
@@ -72,13 +78,8 @@ namespace SaaS.Infrastructure.Services
             var service = new Stripe.Checkout.SessionService(_stripeClient);
             var session = await service.CreateAsync(options);
 
-            await _assinaturaRepository.AtualizarAssinaturaStripe(
-                usuario.UsuarioId,
-                StatusAssinatura.PENDENTE,
-                customerId,
-                session.SubscriptionId,
-                priceId,
-                null);
+            // Checkout nao libera nem suspende o periodo gratuito.
+            // O webhook verificado confirma a assinatura antes de alterar o acesso.
 
             return new StripeCheckoutResponseModel
             {
