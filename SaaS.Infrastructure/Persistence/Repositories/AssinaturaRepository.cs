@@ -208,6 +208,26 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             return affected > 0;
         }
 
+        public async Task<bool> WebhookJaProcessadoAsync(string eventId)
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT EXISTS(SELECT 1 FROM STRIPE_WEBHOOK_PROCESSADOS WHERE EVENT_ID=@id)",conn);
+            cmd.Parameters.AddWithValue("id",eventId);
+            return Convert.ToBoolean(await cmd.ExecuteScalarAsync());
+        }
+
+        public async Task MarcarWebhookProcessadoAsync(string eventId)
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "INSERT INTO STRIPE_WEBHOOK_PROCESSADOS(EVENT_ID) VALUES(@id) ON CONFLICT DO NOTHING",conn);
+            cmd.Parameters.AddWithValue("id",eventId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         public async Task<bool> ReservarCheckoutAsync(int usuarioId)
         {
             await using var conn = new NpgsqlConnection(_connectionString);
