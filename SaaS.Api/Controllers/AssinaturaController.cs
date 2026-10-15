@@ -123,7 +123,14 @@ namespace SaaS.Api.Controllers
         public async Task<IActionResult> ListarRecursos()
         {
             if (!User.TryGetUsuarioId(out var id)) return Unauthorized();
-            return Ok(await _planos.ListarRecursosAsync(id,User.IsInRole("EMPRESA")));
+            var itens = await _planos.ListarRecursosAsync(id,User.IsInRole("EMPRESA"));
+            var resultado = new List<object>();
+            foreach (var item in itens)
+            {
+                resultado.Add(new { item.Tipo, item.Id, item.Nome,
+                    Ativo = await _planos.RecursoAtivoAsync(id, item.Tipo, item.Id) });
+            }
+            return Ok(resultado);
         }
 
         [HttpPut("recursos")]
