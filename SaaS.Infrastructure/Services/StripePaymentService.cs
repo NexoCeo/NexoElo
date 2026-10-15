@@ -80,6 +80,7 @@ namespace SaaS.Infrastructure.Services
             var options = new Stripe.Checkout.SessionCreateOptions
             {
                 Mode = "subscription",
+                ExpiresAt = DateTime.UtcNow.AddMinutes(30),
                 SuccessUrl = successUrl,
                 CancelUrl = cancelUrl,
                 Customer = customerId,
