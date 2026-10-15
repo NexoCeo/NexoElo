@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging.Abstractions;
 using SaaS.Api.Security;
+using SaaS.Api.Services;
 using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
@@ -19,6 +20,7 @@ namespace SaaS.Api.Controllers
     public class UsuarioController : ControllerBase
     {
         private readonly IUsuarioRepository _usuarioRepository;
+        private readonly PlanoAcessoService _planos;
         private readonly ILocalizacaoCadastroService _localizacaoCadastroService;
         private readonly IEmailService _emailService;
         private readonly ILogger<UsuarioController> _logger;
@@ -29,9 +31,11 @@ namespace SaaS.Api.Controllers
             ILocalizacaoCadastroService localizacaoCadastroService,
             IEmailService emailService,
             ILogger<UsuarioController>? logger = null,
-            IArquivoUploadService? arquivoUploadService = null)
+            IArquivoUploadService? arquivoUploadService = null,
+            PlanoAcessoService? planos = null)
         {
             _usuarioRepository = usuarioRepository;
+            _planos = planos ?? throw new ArgumentNullException(nameof(planos));
             _localizacaoCadastroService = localizacaoCadastroService;
             _emailService = emailService;
             _logger = logger ?? NullLogger<UsuarioController>.Instance;
@@ -92,6 +96,11 @@ namespace SaaS.Api.Controllers
                         {
                             return Forbid();
                         }
+
+                        var acessoEmpresa = await _planos.ConsultarAsync(createUsuario.EmpresaId.Value);
+                        if (!acessoEmpresa.AcessoAtivo ||
+                            await _planos.ContarProfissionaisAsync(createUsuario.EmpresaId.Value) >= acessoEmpresa.LimiteProfissionais)
+                            return StatusCode(403, new { message = "Assinatura inativa ou limite de profissionais atingido." });
 
                         // empresaCriandoProfissional = true;
                         senhaProfissionalGerada = GerarSenhaTemporaria();
