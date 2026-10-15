@@ -1216,7 +1216,8 @@ public class SecurityControllerTests
         {
             HttpContext = new DefaultHttpContext
             {
-                User = new ClaimsPrincipal(identity)
+                User = new ClaimsPrincipal(identity),
+                Request = { Path = "/api/Usuario/InserirProfissionalEmpresa" }
             }
         };
     }
