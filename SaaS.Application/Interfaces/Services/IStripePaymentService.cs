@@ -8,5 +8,6 @@ namespace SaaS.Application.Interfaces.Services
         Task<StripePortalResponseModel> CriarPortalAssinatura(CriarPortalAssinaturaModel model);
         Task<StripeCancelamentoResponseModel> CancelarAssinatura(int usuarioId, CancelarAssinaturaModel model);
         Task ProcessarWebhook(string json, string stripeSignature);
+        Task AlterarPlanoAssinatura(int usuarioId, string plano);
     }
 }
