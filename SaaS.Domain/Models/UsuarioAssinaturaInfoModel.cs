@@ -12,5 +12,7 @@ namespace SaaS.Domain.Models
         public string? StripeCustomerId { get; set; }
         public string? StripeSubscriptionId { get; set; }
         public string? StripePriceId { get; set; }
+        public DateTime? DataInicioAssinatura { get; set; }
+        public DateTime? DataCriacaoUsuario { get; set; }
     }
 }
