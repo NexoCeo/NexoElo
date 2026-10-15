@@ -198,7 +198,14 @@ namespace SaaS.Api.Controllers
             try
             {
                 var servicos = await _servicoRepository.ListarServicos(id);
-
+                if (_planos != null)
+                {
+                    var filtrados = new List<ServicoModel>();
+                    foreach(var servico in servicos)
+                        if (await _planos.RecursoAtivoAsync(servico.UsuarioFk ?? id, "SERVICO", servico.Id))
+                            filtrados.Add(servico);
+                    servicos=filtrados;
+                }
                 return Ok(servicos);
             }
             catch (ArgumentException ex)
