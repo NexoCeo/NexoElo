@@ -40,6 +40,32 @@ namespace SaaS.Infrastructure.Services
             if (usuario.Status is StatusAssinatura.ATIVA or StatusAssinatura.CANCELAMENTO_PENDENTE)
                 throw new InvalidOperationException("Utilize o portal para gerenciar uma assinatura existente.");
 
+            if (!await _assinaturaRepository.ReservarCheckoutAsync(usuario.UsuarioId))
+                throw new InvalidOperationException("Ja existe um checkout em andamento. Aguarde ou retome a contratacao anterior.");
+
+            try
+            {
+                return await CriarCheckoutReservadoAsync(usuario, priceId, successUrl, cancelUrl);
+            }
+            catch
+            {
+                await _assinaturaRepository.LiberarCheckoutAsync(usuario.UsuarioId);
+                throw;
+            }
+        }
+
+        private async Task<StripeCheckoutResponseModel> CriarCheckoutReservadoAsync(
+            UsuarioAssinaturaInfoModel usuario, string priceId, string successUrl, string cancelUrl)
+        {
+            var assinaturas = await new SubscriptionService(Client).ListAsync(new SubscriptionListOptions
+            {
+                Customer = usuario.StripeCustomerId,
+                Status = "all",
+                Limit = 100
+            });
+            if (assinaturas.Data.Any(s => s.Status is "active" or "trialing" or "past_due" or "unpaid" or "incomplete"))
+                throw new InvalidOperationException("Ja existe uma assinatura Stripe em andamento para esta conta.");
+            
             var customerId = usuario.StripeCustomerId;
             if (string.IsNullOrWhiteSpace(customerId))
             {
@@ -74,6 +100,7 @@ namespace SaaS.Infrastructure.Services
             var service = new Stripe.Checkout.SessionService(Client);
             var session = await service.CreateAsync(options);
 
+            await _assinaturaRepository.RegistrarSessaoCheckoutAsync(usuario.UsuarioId, session.Id);
             // Checkout nao libera nem suspende o periodo gratuito.
             // O webhook verificado confirma a assinatura antes de alterar o acesso.
 
