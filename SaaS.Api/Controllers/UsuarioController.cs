@@ -43,6 +43,7 @@ namespace SaaS.Api.Controllers
         }
 
         [HttpPost("InserirUsuario")]
+        [HttpPost("InserirProfissionalEmpresa")]
         [AllowAnonymous]
         [EnableRateLimiting("registration")]
         [RequestSizeLimit(6 * 1024 * 1024)]
@@ -81,7 +82,13 @@ namespace SaaS.Api.Controllers
                     return BadRequest("Selecione um tipo de usuário válido.");
 
                 var tipoUsuario = createUsuario.TipoUsuario.Value;
-                var statusVinculoProfissional = "APROVADO";
+                var cadastroPelaEmpresa = HttpContext.Request.Path.Value?.EndsWith(
+                    "/InserirProfissionalEmpresa", StringComparison.OrdinalIgnoreCase) == true;
+                if (cadastroPelaEmpresa && tipoUsuario != TipoUsuario.PROFISSIONAL)
+                    return BadRequest("Esta rota e exclusiva para o cadastro de profissionais pela empresa.");
+
+                // Cadastro publico nunca aprova o proprio vinculo, mesmo com cookie de login.
+                var statusVinculoProfissional = "PENDENTE";
                 // var empresaCriandoProfissional = false;
                 string? senhaProfissionalGerada = null;
                 if (tipoUsuario == TipoUsuario.PROFISSIONAL)
@@ -89,8 +96,10 @@ namespace SaaS.Api.Controllers
                     if (!createUsuario.EmpresaId.HasValue || createUsuario.EmpresaId.Value <= 0)
                         return BadRequest("Selecione a empresa para solicitar o vinculo.");
 
-                    if (User.Identity?.IsAuthenticated == true)
+                    if (cadastroPelaEmpresa)
                     {
+                        if (User.Identity?.IsAuthenticated != true)
+                            return Unauthorized(new { message = "A empresa deve estar autenticada." });
                         if (!User.IsInRole(nameof(TipoUsuario.EMPRESA)) ||
                             !User.EhProprioUsuario(createUsuario.EmpresaId.Value))
                         {
@@ -106,6 +115,7 @@ namespace SaaS.Api.Controllers
                         }
 
                         // empresaCriandoProfissional = true;
+                        statusVinculoProfissional = "APROVADO";
                         senhaProfissionalGerada = GerarSenhaTemporaria();
                         createUsuario.Senha = senhaProfissionalGerada;
 
@@ -174,10 +184,6 @@ namespace SaaS.Api.Controllers
                                 senhaTemporaria = senhaProfissionalGerada
                             });
                         }
-                    }
-                    else
-                    {
-                        statusVinculoProfissional = "PENDENTE";
                     }
                 }
 
