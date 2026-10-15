@@ -24,7 +24,7 @@ public sealed class PlanoAcessoService
         var inicio = registro.DataCriacaoUsuario ?? registro.DataInicioAssinatura ?? DateTime.UtcNow;
         var fimGratis = inicio.AddDays(30);
         var agora = DateTime.UtcNow;
-        var pago = registro.Status is StatusAssinatura.ATIVA or StatusAssinatura.CANCELAMENTO_PENDENTE
+        var pago = (registro.Status is StatusAssinatura.ATIVA or StatusAssinatura.CANCELAMENTO_PENDENTE)
             && (!registro.DataFimAssinatura.HasValue || registro.DataFimAssinatura.Value > agora);
         // O período grátis não é reiniciado ao tentar criar um checkout.
         var gratis = !pago && string.IsNullOrEmpty(registro.StripeSubscriptionId) && agora < fimGratis;
