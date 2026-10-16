@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SaaS.Api.Security;
@@ -25,7 +26,8 @@ public sealed class RelatoriosController : ControllerBase
     public async Task<IActionResult> GerarRelatorio(
         string tipo,
         [FromQuery] int ano,
-        [FromQuery] int mes)
+        [FromQuery] int mes,
+        [FromQuery] string idioma = "pt")
     {
         if (!User.TryGetUsuarioId(out var usuarioId))
             return Unauthorized();
@@ -50,6 +52,9 @@ public sealed class RelatoriosController : ControllerBase
 
         try
         {
+            // CultureInfo.CurrentUICulture flows with async operations for this request.
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(
+                string.Equals(idioma, "en", StringComparison.OrdinalIgnoreCase) ? "en-US" : "pt-BR");
             var arquivo = await _relatorioService.GerarRelatorioAsync(
                 usuarioId,
                 tipoRelatorio,
