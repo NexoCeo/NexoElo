@@ -18,6 +18,50 @@ public sealed class RelatorioService : IRelatorioService
     private const string CorBorda = "#D8DEE9";
     private const string CorFundoSuave = "#F4F7FC";
 
+    private static readonly IReadOnlyDictionary<string, string> EnglishLabels =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Faturamento"] = "Revenue",
+            ["Concluidos"] = "Completed",
+            ["Ticket medio"] = "Average ticket",
+            ["Cancelados"] = "Canceled",
+            ["Faturamento por dia"] = "Daily revenue",
+            ["Nenhum atendimento concluido gerou faturamento neste periodo."] = "No completed appointments generated revenue during this period.",
+            ["Data"] = "Date",
+            ["Atendimentos"] = "Appointments",
+            ["Mais realizado"] = "Most booked",
+            ["Sem dados"] = "No data",
+            ["Execucoes"] = "Completed appointments",
+            ["Servicos ativos"] = "Active services",
+            ["Ranking de servicos concluidos"] = "Ranking of completed services",
+            ["Nenhum servico foi concluido neste periodo."] = "No services were completed during this period.",
+            ["Servico"] = "Service",
+            ["Participacao"] = "Share",
+            ["Total"] = "Total",
+            ["Agendados"] = "Scheduled",
+            ["Agendamentos do periodo"] = "Appointments during this period",
+            ["Nenhum agendamento foi encontrado neste periodo."] = "No appointments were found during this period.",
+            ["Data e hora"] = "Date and time",
+            ["Cliente"] = "Customer",
+            ["Prestador"] = "Professional",
+            ["Status"] = "Status",
+            ["Valor"] = "Price",
+            ["Resumo financeiro mensal"] = "Monthly financial summary",
+            ["Servicos mais realizados"] = "Most performed services",
+            ["Agenda mensal"] = "Monthly calendar",
+            ["Valores calculados somente a partir de atendimentos concluidos."] = "Values calculated only from completed appointments.",
+            ["Ranking por quantidade de atendimentos concluidos no periodo."] = "Ranking by the number of completed appointments during this period.",
+            ["Visao consolidada de todos os agendamentos e seus status."] = "Overview of all appointments and their statuses.",
+            ["Agendado"] = "Scheduled",
+            ["Concluido"] = "Completed",
+            ["Cancelado"] = "Canceled",
+        };
+
+    private static bool IsEnglish => CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "en";
+    private static string L(string label) =>
+        IsEnglish && EnglishLabels.TryGetValue(label, out var translation) ? translation : label;
+    private static CultureInfo NumeroCulture => IsEnglish ? CultureInfo.GetCultureInfo("en-US") : CulturaBrasil;
+
     private readonly IRelatorioRepository _relatorioRepository;
 
     static RelatorioService()
@@ -83,7 +127,7 @@ public sealed class RelatorioService : IRelatorioService
                 .FontSize(12)
                 .SemiBold();
             column.Item().Text(
-                    $"Periodo: {dados.PeriodoInicio:dd/MM/yyyy} a {dados.PeriodoFim:dd/MM/yyyy}")
+                    $"{(IsEnglish ? "Period" : "Periodo")}: {dados.PeriodoInicio:dd/MM/yyyy} {(IsEnglish ? "to" : "a")} {dados.PeriodoFim:dd/MM/yyyy}")
                 .FontColor(CorTextoSecundario);
             column.Item().PaddingTop(7).LineHorizontal(1).LineColor(CorBorda);
         });
@@ -120,13 +164,13 @@ public sealed class RelatorioService : IRelatorioService
     {
         column.Item().Element(container => ComporIndicadores(container,
         [
-            ("Faturamento", FormatarMoeda(dados.FaturamentoTotal)),
-            ("Concluidos", dados.TotalConcluidos.ToString(CulturaBrasil)),
-            ("Ticket medio", FormatarMoeda(dados.TicketMedio)),
-            ("Cancelados", dados.TotalCancelados.ToString(CulturaBrasil))
+            (L("Faturamento"), FormatarMoeda(dados.FaturamentoTotal)),
+            (L("Concluidos"), dados.TotalConcluidos.ToString(NumeroCulture)),
+            (L("Ticket medio"), FormatarMoeda(dados.TicketMedio)),
+            (L("Cancelados"), dados.TotalCancelados.ToString(NumeroCulture))
         ]));
 
-        column.Item().Text("Faturamento por dia").FontSize(13).SemiBold();
+        column.Item().Text(L("Faturamento por dia")).FontSize(13).SemiBold();
 
         if (dados.FaturamentoPorDia.Count == 0)
         {
@@ -145,13 +189,13 @@ public sealed class RelatorioService : IRelatorioService
                 columns.RelativeColumn(2);
             });
 
-            ComporCabecalhoTabela(table, "Data", "Atendimentos", "Faturamento");
+            ComporCabecalhoTabela(table, L("Data"), L("Atendimentos"), L("Faturamento"));
 
             foreach (var item in dados.FaturamentoPorDia)
             {
                 table.Cell().Element(CelulaTabela).Text(item.Data.ToString("dd/MM/yyyy"));
                 table.Cell().Element(CelulaTabela).Text(
-                    item.QuantidadeConcluida.ToString(CulturaBrasil));
+                    item.QuantidadeConcluida.ToString(NumeroCulture));
                 table.Cell().Element(CelulaTabela).Text(FormatarMoeda(item.Faturamento));
             }
         });
@@ -165,13 +209,13 @@ public sealed class RelatorioService : IRelatorioService
 
         column.Item().Element(container => ComporIndicadores(container,
         [
-            ("Mais realizado", maisRealizado?.Nome ?? "Sem dados"),
-            ("Execucoes", dados.TotalConcluidos.ToString(CulturaBrasil)),
-            ("Servicos ativos", dados.Servicos.Count.ToString(CulturaBrasil)),
-            ("Faturamento", FormatarMoeda(dados.FaturamentoTotal))
+            (L("Mais realizado"), maisRealizado?.Nome ?? "Sem dados"),
+            (L("Execucoes"), dados.TotalConcluidos.ToString(NumeroCulture)),
+            (L("Servicos ativos"), dados.Servicos.Count.ToString(NumeroCulture)),
+            (L("Faturamento"), FormatarMoeda(dados.FaturamentoTotal))
         ]));
 
-        column.Item().Text("Ranking de servicos concluidos").FontSize(13).SemiBold();
+        column.Item().Text(L("Ranking de servicos concluidos")).FontSize(13).SemiBold();
 
         if (dados.Servicos.Count == 0)
         {
@@ -207,12 +251,12 @@ public sealed class RelatorioService : IRelatorioService
                     ? (decimal)servico.QuantidadeConcluida / dados.TotalConcluidos
                     : 0;
 
-                table.Cell().Element(CelulaTabela).Text((index + 1).ToString(CulturaBrasil));
+                table.Cell().Element(CelulaTabela).Text((index + 1).ToString(NumeroCulture));
                 table.Cell().Element(CelulaTabela).Text(servico.Nome);
                 table.Cell().Element(CelulaTabela).Text(
-                    servico.QuantidadeConcluida.ToString(CulturaBrasil));
+                    servico.QuantidadeConcluida.ToString(NumeroCulture));
                 table.Cell().Element(CelulaTabela).Text(
-                    participacao.ToString("P1", CulturaBrasil));
+                    participacao.ToString("P1", NumeroCulture));
                 table.Cell().Element(CelulaTabela).Text(FormatarMoeda(servico.Faturamento));
             }
         });
@@ -222,13 +266,13 @@ public sealed class RelatorioService : IRelatorioService
     {
         column.Item().Element(container => ComporIndicadores(container,
         [
-            ("Total", dados.TotalAgendamentos.ToString(CulturaBrasil)),
-            ("Agendados", dados.TotalAgendados.ToString(CulturaBrasil)),
-            ("Concluidos", dados.TotalConcluidos.ToString(CulturaBrasil)),
-            ("Cancelados", dados.TotalCancelados.ToString(CulturaBrasil))
+            (L("Total"), dados.TotalAgendamentos.ToString(NumeroCulture)),
+            (L("Agendados"), dados.TotalAgendados.ToString(NumeroCulture)),
+            (L("Concluidos"), dados.TotalConcluidos.ToString(NumeroCulture)),
+            (L("Cancelados"), dados.TotalCancelados.ToString(NumeroCulture))
         ]));
 
-        column.Item().Text("Agendamentos do periodo").FontSize(13).SemiBold();
+        column.Item().Text(L("Agendamentos do periodo")).FontSize(13).SemiBold();
 
         if (dados.Agendamentos.Count == 0)
         {
@@ -345,15 +389,15 @@ public sealed class RelatorioService : IRelatorioService
     {
         container.Row(row =>
         {
-            row.RelativeItem().Text($"Gerado em {DateTime.Now:dd/MM/yyyy HH:mm}")
+            row.RelativeItem().Text($"{(IsEnglish ? "Generated on" : "Gerado em")} {DateTime.Now:dd/MM/yyyy HH:mm}")
                 .FontSize(8)
                 .FontColor(CorTextoSecundario);
             row.AutoItem().Text(text =>
             {
                 text.DefaultTextStyle(style => style.FontSize(8).FontColor(CorTextoSecundario));
-                text.Span("Pagina ");
+                text.Span(IsEnglish ? "Page " : "Pagina ");
                 text.CurrentPageNumber();
-                text.Span(" de ");
+                text.Span(IsEnglish ? " of " : " de ");
                 text.TotalPages();
             });
         });
@@ -363,9 +407,9 @@ public sealed class RelatorioService : IRelatorioService
     {
         return tipo switch
         {
-            TipoRelatorio.RESUMO_FINANCEIRO => "Resumo financeiro mensal",
-            TipoRelatorio.SERVICOS_MAIS_REALIZADOS => "Servicos mais realizados",
-            TipoRelatorio.AGENDA_MENSAL => "Agenda mensal",
+            TipoRelatorio.RESUMO_FINANCEIRO => L("Resumo financeiro mensal"),
+            TipoRelatorio.SERVICOS_MAIS_REALIZADOS => L("Servicos mais realizados"),
+            TipoRelatorio.AGENDA_MENSAL => L("Agenda mensal"),
             _ => throw new ArgumentOutOfRangeException(nameof(tipo))
         };
     }
@@ -386,16 +430,16 @@ public sealed class RelatorioService : IRelatorioService
 
     private static string FormatarMoeda(decimal valor)
     {
-        return valor.ToString("C", CulturaBrasil);
+        return IsEnglish ? $"BRL {valor.ToString("N2", NumeroCulture)}" : valor.ToString("C", CulturaBrasil);
     }
 
     private static string FormatarStatus(string status)
     {
         return status.Trim().ToUpperInvariant() switch
         {
-            "AGENDADO" => "Agendado",
-            "CONCLUIDO" => "Concluido",
-            "CANCELADO" => "Cancelado",
+            "AGENDADO" => L("Agendado"),
+            "CONCLUIDO" => L("Concluido"),
+            "CANCELADO" => L("Cancelado"),
             _ => status
         };
     }
