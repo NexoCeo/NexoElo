@@ -141,7 +141,7 @@ public sealed class RelatorioService : IRelatorioService
         container.Column(column =>
         {
             column.Spacing(16);
-            column.Item().Text(ObterDescricao(tipo)).FontColor(CorTextoSecundario);
+            column.Item().Text(L(ObterDescricao(tipo))).FontColor(CorTextoSecundario);
 
             switch (tipo)
             {
@@ -209,7 +209,7 @@ public sealed class RelatorioService : IRelatorioService
 
         column.Item().Element(container => ComporIndicadores(container,
         [
-            (L("Mais realizado"), maisRealizado?.Nome ?? "Sem dados"),
+            (L("Mais realizado"), maisRealizado?.Nome ?? L("Sem dados")),
             (L("Execucoes"), dados.TotalConcluidos.ToString(NumeroCulture)),
             (L("Servicos ativos"), dados.Servicos.Count.ToString(NumeroCulture)),
             (L("Faturamento"), FormatarMoeda(dados.FaturamentoTotal))
@@ -381,7 +381,7 @@ public sealed class RelatorioService : IRelatorioService
             .Background(CorFundoSuave)
             .Padding(18)
             .AlignCenter()
-            .Text(mensagem)
+            .Text(L(mensagem))
             .FontColor(CorTextoSecundario);
     }
 
