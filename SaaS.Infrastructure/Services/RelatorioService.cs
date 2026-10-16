@@ -127,7 +127,7 @@ public sealed class RelatorioService : IRelatorioService
                 .FontSize(12)
                 .SemiBold();
             column.Item().Text(
-                    $"{(IsEnglish ? "Period" : "Periodo")}: {dados.PeriodoInicio:dd/MM/yyyy} {(IsEnglish ? "to" : "a")} {dados.PeriodoFim:dd/MM/yyyy}")
+                    $"{(IsEnglish ? "Period" : "Periodo")}: {dados.PeriodoInicio.ToString(IsEnglish ? "MM/dd/yyyy" : "dd/MM/yyyy")} {(IsEnglish ? "to" : "a")} {dados.PeriodoFim.ToString(IsEnglish ? "MM/dd/yyyy" : "dd/MM/yyyy")}")
                 .FontColor(CorTextoSecundario);
             column.Item().PaddingTop(7).LineHorizontal(1).LineColor(CorBorda);
         });
@@ -193,7 +193,7 @@ public sealed class RelatorioService : IRelatorioService
 
             foreach (var item in dados.FaturamentoPorDia)
             {
-                table.Cell().Element(CelulaTabela).Text(item.Data.ToString("dd/MM/yyyy"));
+                table.Cell().Element(CelulaTabela).Text(item.Data.ToString(IsEnglish ? "MM/dd/yyyy" : "dd/MM/yyyy"));
                 table.Cell().Element(CelulaTabela).Text(
                     item.QuantidadeConcluida.ToString(NumeroCulture));
                 table.Cell().Element(CelulaTabela).Text(FormatarMoeda(item.Faturamento));
@@ -306,7 +306,7 @@ public sealed class RelatorioService : IRelatorioService
             foreach (var item in dados.Agendamentos)
             {
                 table.Cell().Element(CelulaTabela).Text(
-                    item.DataAgendamento.ToString("dd/MM HH:mm"));
+                    item.DataAgendamento.ToString(IsEnglish ? "MM/dd HH:mm" : "dd/MM HH:mm"));
                 table.Cell().Element(CelulaTabela).Text(item.ClienteNome);
                 table.Cell().Element(CelulaTabela).Text(item.PrestadorNome);
                 table.Cell().Element(CelulaTabela).Text(item.ServicoNome);
@@ -389,7 +389,7 @@ public sealed class RelatorioService : IRelatorioService
     {
         container.Row(row =>
         {
-            row.RelativeItem().Text($"{(IsEnglish ? "Generated on" : "Gerado em")} {DateTime.Now:dd/MM/yyyy HH:mm}")
+            row.RelativeItem().Text($"{(IsEnglish ? "Generated on" : "Gerado em")} {DateTime.Now.ToString(IsEnglish ? "MM/dd/yyyy HH:mm" : "dd/MM/yyyy HH:mm")}")
                 .FontSize(8)
                 .FontColor(CorTextoSecundario);
             row.AutoItem().Text(text =>
