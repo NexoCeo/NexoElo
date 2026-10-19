@@ -1,32 +1,39 @@
-# WhatsApp Cloud API — etapa 1 (integração protegida)
+# WhatsApp Cloud API — implementação incremental
 
-Estado atual: **infraestrutura inicial; nenhuma mensagem é enviada**.
+## Estado atual
 
-## Rotas
+Foi implementado o Embedded Signup no backend, troca server-side do código Meta, verificação de que o número pertence à WABA autorizada, armazenamento cifrado de credenciais por estabelecimento, atualização de preferências e recebimento de webhooks assinados com persistência idempotente. **Envios automáticos e campanhas continuam desligados**; a conexão e as configurações não significam que mensagens possam ser disparadas.
 
-- `GET /api/WhatsappBusiness/status`: exige autenticação EMPRESA/AUTONOMO e assinatura AVANCADO ativa. Mostra estado NAO_CONFIGURADO.
-- `GET /api/WhatsappBusiness/signup-config`: bloqueado com HTTP 503 até backend estar pronto para armazenar os tokens.
-- `POST /api/WhatsappBusiness/conectar`, `PUT /preferencias`, `POST /desconectar`: bloqueados HTTP 503 até implementação segura.
-- `GET /api/WhatsappBusiness/webhook`: valida desafio de configuração enviado pela Meta.
-- `POST /api/WhatsappBusiness/webhook`: verifica X-Hub-Signature-256 com comparação de tempo constante. Retorna 503 mesmo com assinatura válida até ser implementado armazenamento idempotente de eventos.
+## Pré-requisitos obrigatórios
 
-## Variáveis (Render, nunca no React ou repositório)
+1. **Aplicar manualmente** `docs/migrations/20261019_whatsapp.sql` no PostgreSQL de produção após revisar compatibilidade com as tabelas existentes.
+2. No Render configurar:
+   - `WhatsApp__AppId` e `WhatsApp__ConfigurationId`: IDs públicos do aplicativo e Embedded Signup
+   - `WhatsApp__AppSecret`: App Secret real da Meta (privado)
+   - `WhatsApp__WebhookVerifyToken`: token aleatório da verificação de webhook
+   - `WhatsApp__EncryptionKey`: base64 de **32 bytes aleatórios**, independente do App Secret e da chave JWT
+   - `WhatsApp__GraphVersion`: versão atual suportada da Graph API (validar na documentação da Meta)
+   - `WhatsApp__Enabled=true` **somente após** migration, credenciais e revisão de segurança
+3. Configurar a URL de callback `https://nexoelo.onrender.com/api/WhatsappBusiness/webhook` e subscrever o campo `messages` na Meta.
+4. Configurar domínios permitidos, URLs de redirecionamento e a configuração correta do Embedded Signup (Tech Provider).
 
-- `WhatsApp__AppId`: identificador da aplicação Meta
-- `WhatsApp__ConfigurationId`: configuração Embedded Signup
-- `WhatsApp__AppSecret`: segredo para troca do código e validação dos webhooks
-- `WhatsApp__WebhookVerifyToken`: token aleatório para confirmação do callback
-- Futuramente `WhatsApp__GraphVersion` explicitamente aprovada após validar a documentação da Meta.
+PowerShell 5.1 para gerar WhatsApp__EncryptionKey (não publicar o resultado no GitHub):
 
-O callback de webhooks previsto é `https://nexoelo.onrender.com/api/WhatsappBusiness/webhook`, sujeito à configuração de domínio e roteamento.
+```powershell
+$bytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$rng.Dispose()
+[Convert]::ToBase64String($bytes)
+```
 
-## Próximas etapas antes de ativar
+**Nunca trocar a chave de criptografia sem migrar os tokens previamente cifrados.**
 
-1. Criar migrations Postgres para vínculo entre proprietário (tenant), WABA, phone number ID, credencial criptografada, consentimentos, templates e log de mensagens com idempotência.
-2. Trocar o código de autorização do Embedded Signup por credencial adequada via Graph API exclusivamente no backend, validando WABA e número e associação exclusiva a um tenant.
-3. Verificar permissões da aplicação Meta, inscrição de webhooks em WABA, capacidade de envio e estado financeiro sem assumir que pagamento via cartão é sempre embutido.
-4. Implementar consumidor de webhooks persistente, controle de status e reprocessamento idempotente; só então retornar 200.
-5. Criar templates aprovados, fila/outbox de confirmações e lembretes com consentimento, limites, controle de custos e tratamento de falhas.
-6. Integrar indicadores reais ao frontend, configurar alarmes e realizar testes de sandbox/cobrança.
+## Limitações a concluir
 
-**Não habilitar disparos nem exibir status 'conectado' apenas por uma autorização de login.**
+- Não há envio de templates, worker/outbox de agendamento, catálogo de templates aprovados, nem campanhas. As preferências salvas ainda não desencadeiam mensagens.
+- Campos de métricas retornam zero até a agregação ser implementada; não são indicadores de consumo real ou preços Meta.
+- O módulo não comprova faturamento direto por estabelecimento, verificação empresarial, elegibilidade de coexistência de número nem assinatura de webhook por WABA.
+- Revogar o token na Meta e excluir o vínculo remoto exige fluxo separado; hoje desconectar remove apenas a conexão armazenada no NexoElo.
+- Antes de produção: testes reais com WABA e número autorizados, regras de consentimento, tratamento de duplicidade de signup e revalidação de tokens.
+- Implementações e migration não passaram por build/integration tests neste ambiente.
