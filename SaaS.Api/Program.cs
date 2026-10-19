@@ -78,6 +78,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddSignalR();
 builder.Services.AddScoped<PlanoAcessoService>();
+builder.Services.AddScoped<WhatsAppStore>();
+builder.Services.AddHttpClient();
 builder.Services.AddProblemDetails(options =>
 {
     options.CustomizeProblemDetails = context =>
