@@ -67,9 +67,12 @@ public sealed class WhatsappBusinessController : ControllerBase
         var graph=_config["WhatsApp:GraphVersion"] ?? "v23.0";
         var client=_http.CreateClient();
         var tokenUrl=$"https://graph.facebook.com/{graph}/oauth/access_token";
-        using var response=await client.GetAsync(tokenUrl+"?client_id="+Uri.EscapeDataString(_config["WhatsApp:AppId"]!)
-            +"&client_secret="+Uri.EscapeDataString(_config["WhatsApp:AppSecret"]!)
-            +"&code="+Uri.EscapeDataString(input.Code));
+        using var response=await client.PostAsync(tokenUrl,new FormUrlEncodedContent(new Dictionary<string,string>
+        {
+            ["client_id"]=_config["WhatsApp:AppId"]!,
+            ["client_secret"]=_config["WhatsApp:AppSecret"]!,
+            ["code"]=input.Code
+        }));
         if(!response.IsSuccessStatusCode)return BadRequest(new {erro="A Meta recusou a autorizacao. Tente novamente."});
         using var body=JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         if(!body.RootElement.TryGetProperty("access_token",out var node))return BadRequest(new {erro="A Meta nao retornou uma credencial valida."});
