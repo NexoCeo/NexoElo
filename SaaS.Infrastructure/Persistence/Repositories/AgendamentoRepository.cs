@@ -38,14 +38,13 @@ namespace SaaS.Infrastructure.Persistence.Repositories
 
                 await AdquirirBloqueioCliente(connection, transaction, clienteFk);
 
-                if (await ExisteAgendamentoAtivoClienteNaData(
+                if (await ExisteAgendamentoAgendadoCliente(
                         connection,
                         transaction,
-                        clienteFk,
-                        agendamento.DataAgendamento.Date))
+                        clienteFk))
                 {
                     throw new RegraAgendamentoException(
-                        "O cliente já possui um agendamento ativo neste dia. Conclua ou cancele o agendamento anterior para agendar novamente.");
+                        "Este cliente já possui um agendamento ativo. Conclua ou cancele o agendamento anterior antes de realizar um novo agendamento.");
                 }
 
                 var servico = await ObterServico(
@@ -894,29 +893,22 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             await command.ExecuteScalarAsync();
         }
 
-        private static async Task<bool> ExisteAgendamentoAtivoClienteNaData(
+        // A regra e global por cliente: nao depende de data, empresa ou profissional.
+        // O bloqueio transacional do cliente deve ser adquirido antes desta consulta.
+        private static async Task<bool> ExisteAgendamentoAgendadoCliente(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
-            int clienteFk,
-            DateTime data)
+            int clienteFk)
         {
-            var inicio = DateTime.SpecifyKind(data.Date, DateTimeKind.Unspecified);
-            var fim = inicio.AddDays(1);
-
             await using var command = new NpgsqlCommand(@"
                 SELECT EXISTS (
                     SELECT 1
                     FROM AGENDAMENTOS
                     WHERE CLIENTE_FK = @ClienteFk
-                      AND DATA_AGENDAMENTO >= @Inicio
-                      AND DATA_AGENDAMENTO < @Fim
-                      AND UPPER(TRIM(STATUS_AGENDAMENTO)) NOT IN ('CONCLUIDO', 'CANCELADO')
+                      AND UPPER(TRIM(STATUS_AGENDAMENTO)) = 'AGENDADO'
                 )", connection, transaction);
 
             command.Parameters.AddWithValue("@ClienteFk", clienteFk);
-            command.Parameters.Add("@Inicio", NpgsqlDbType.Timestamp).Value = inicio;
-            command.Parameters.Add("@Fim", NpgsqlDbType.Timestamp).Value = fim;
-
             return Convert.ToBoolean(await command.ExecuteScalarAsync());
         }
 
