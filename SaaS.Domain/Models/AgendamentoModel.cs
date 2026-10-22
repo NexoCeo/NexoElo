@@ -15,6 +15,7 @@ namespace SaaS.Domain.Models
         public decimal Taxa { get; set; }
         public decimal ValorServico { get; set; }
         public string Status { get; set; } = "AGENDADO";
+        public string? MotivoCancelamento { get; set; }
         public string ClienteNome { get; set; } = string.Empty;
         public string ServicoNome { get; set; } = string.Empty;
         public string ProfissionalNome { get; set; } = string.Empty;
