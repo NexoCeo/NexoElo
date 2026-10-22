@@ -38,13 +38,14 @@ namespace SaaS.Infrastructure.Persistence.Repositories
 
                 await AdquirirBloqueioCliente(connection, transaction, clienteFk);
 
-                if (await ExisteAgendamentoAgendadoCliente(
-                        connection,
-                        transaction,
-                        clienteFk))
+                var agendamentoAtivo = await ObterDataAgendamentoAtivoCliente(
+                    connection,
+                    transaction,
+                    clienteFk);
+                if (agendamentoAtivo.HasValue)
                 {
                     throw new RegraAgendamentoException(
-                        "Este cliente já possui um agendamento ativo. Conclua ou cancele o agendamento anterior antes de realizar um novo agendamento.");
+                        $"Este cliente já possui um agendamento ativo para {agendamentoAtivo.Value:dd/MM/yyyy} às {agendamentoAtivo.Value:HH:mm}. Conclua ou cancele o agendamento anterior antes de realizar um novo agendamento.");
                 }
 
                 var servico = await ObterServico(
@@ -895,21 +896,22 @@ namespace SaaS.Infrastructure.Persistence.Repositories
 
         // A regra e global por cliente: nao depende de data, empresa ou profissional.
         // O bloqueio transacional do cliente deve ser adquirido antes desta consulta.
-        private static async Task<bool> ExisteAgendamentoAgendadoCliente(
+        private static async Task<DateTime?> ObterDataAgendamentoAtivoCliente(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             int clienteFk)
         {
             await using var command = new NpgsqlCommand(@"
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM AGENDAMENTOS
-                    WHERE CLIENTE_FK = @ClienteFk
-                      AND UPPER(TRIM(STATUS_AGENDAMENTO)) = 'AGENDADO'
-                )", connection, transaction);
+                SELECT DATA_AGENDAMENTO
+                FROM AGENDAMENTOS
+                WHERE CLIENTE_FK = @ClienteFk
+                  AND UPPER(TRIM(STATUS_AGENDAMENTO)) = 'AGENDADO'
+                ORDER BY DATA_AGENDAMENTO ASC, ID_AGENDAMENTO ASC
+                LIMIT 1", connection, transaction);
 
             command.Parameters.AddWithValue("@ClienteFk", clienteFk);
-            return Convert.ToBoolean(await command.ExecuteScalarAsync());
+            var resultado = await command.ExecuteScalarAsync();
+            return resultado is null or DBNull ? null : Convert.ToDateTime(resultado);
         }
 
         private static async Task<FuncionamentoPrestadorConfig> ObterFuncionamentoResponsavel(
