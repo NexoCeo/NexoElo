@@ -42,7 +42,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 // Timestamp no banco representa a hora local de Sao Paulo.
                 await using (var expirar = new NpgsqlCommand(@"
                     UPDATE AGENDAMENTOS
-                    SET STATUS_AGENDAMENTO = 'CANCELADO'
+                    SET STATUS_AGENDAMENTO = 'CANCELADO',
+                        MOTIVO_CANCELAMENTO = 'Cancelamento automático de agendamento!'
                     WHERE CLIENTE_FK = @ClienteFk
                       AND UPPER(TRIM(STATUS_AGENDAMENTO)) = 'AGENDADO'
                       AND DATA_AGENDAMENTO <= @Limite", connection, transaction))
@@ -300,6 +301,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 A.SERVICO_FK,
                 A.DATA_AGENDAMENTO,
                 A.STATUS_AGENDAMENTO,
+                A.MOTIVO_CANCELAMENTO,
                 S.VALOR_SERVICO,
                 S.NOME_SERVICO,
                 S.USUARIO_FK AS RESPONSAVEL_FK,
@@ -363,6 +365,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     A.SERVICO_FK,
                     A.DATA_AGENDAMENTO,
                     A.STATUS_AGENDAMENTO,
+                A.MOTIVO_CANCELAMENTO,
                     S.VALOR_SERVICO,
                     S.NOME_SERVICO,
                     S.USUARIO_FK AS RESPONSAVEL_FK,
@@ -424,6 +427,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 A.SERVICO_FK,
                 A.DATA_AGENDAMENTO,
                 A.STATUS_AGENDAMENTO,
+                A.MOTIVO_CANCELAMENTO,
                 S.VALOR_SERVICO,
                 S.NOME_SERVICO,
                 S.USUARIO_FK AS RESPONSAVEL_FK,
@@ -528,6 +532,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         A.SERVICO_FK,
                         A.DATA_AGENDAMENTO,
                         A.STATUS_AGENDAMENTO,
+                A.MOTIVO_CANCELAMENTO,
                         S.VALOR_SERVICO,
                         S.NOME_SERVICO,
                         S.USUARIO_FK AS RESPONSAVEL_FK,
@@ -705,6 +710,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     Taxa = 0,
                     ValorServico = valorServico,
                     Status = reader.GetString(reader.GetOrdinal("STATUS_AGENDAMENTO")),
+                    MotivoCancelamento = reader.IsDBNull(reader.GetOrdinal("MOTIVO_CANCELAMENTO")) ? null : reader.GetString(reader.GetOrdinal("MOTIVO_CANCELAMENTO")),
                     ClienteNome = reader.IsDBNull(clienteNomeOrdinal)
                         ? string.Empty
                         : reader.GetString(clienteNomeOrdinal),
