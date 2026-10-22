@@ -1,4 +1,4 @@
-﻿using SaaS.Domain.Models;
+using SaaS.Domain.Models;
 using SaaS.Application.Interfaces.Repositories;
 using SaaS.Domain.Enums;
 using SaaS.Domain.Exceptions;
@@ -21,24 +21,27 @@ namespace SaaS.Api.Controllers
         private readonly IHubContext<AgendaHub> _agendaHub;
         private readonly ILogger<AgendamentoController> _logger;
         private readonly PlanoAcessoService? _planos;
+        private readonly IUsuarioRepository? _usuarios;
 
         public AgendamentoController(
             IAgendamentoRepository agendamentoRepository,
             IVinculoRepository vinculoRepository,
             IHubContext<AgendaHub> agendaHub,
             ILogger<AgendamentoController> logger,
-            PlanoAcessoService? planos = null)
+            PlanoAcessoService? planos = null,
+            IUsuarioRepository? usuarios = null)
         {
             _agendamentoRepository = agendamentoRepository;
             _vinculoRepository = vinculoRepository;
             _agendaHub = agendaHub;
             _logger = logger;
             _planos = planos;
+            _usuarios = usuarios;
         }
 
         // POST: api/Agendamento
         [HttpPost]
-        [Authorize(Roles = nameof(TipoUsuario.CLIENTE))]
+        [Authorize(Roles = "CLIENTE,EMPRESA,AUTONOMO,PROFISSIONAL")]
         public async Task<IActionResult> CriarAgendamento([FromBody] CreateAgendamentoModel criarAgendamento)
         {
             if (criarAgendamento == null)
@@ -56,6 +59,27 @@ namespace SaaS.Api.Controllers
 
             try
             {
+                if (!User.IsInRole(nameof(TipoUsuario.CLIENTE)))
+                {
+                    if (User.IsInRole(nameof(TipoUsuario.PROFISSIONAL)))
+                    {
+                        var vinculo = await _vinculoRepository.ObterVinculoAtualDoProfissionalAsync(clienteId);
+                        if (vinculo?.VinculoStatus != "APROVADO" ||
+                            vinculo.EmpresaId != criarAgendamento.ResponsavelId ||
+                            criarAgendamento.ProfissionalId != clienteId)
+                            return Forbid();
+                    }
+                    else if (criarAgendamento.ResponsavelId != clienteId)
+                        return Forbid();
+
+                    if (criarAgendamento.ClienteId <= 0 || _usuarios == null)
+                        return BadRequest(new { erro = "Selecione um cliente." });
+                    var cliente = await _usuarios.ListarUsuarioPorId(criarAgendamento.ClienteId);
+                    if (cliente?.TipoUsuario != TipoUsuario.CLIENTE)
+                        return BadRequest(new { erro = "Cliente invalido." });
+                    clienteId = cliente.Id;
+                }
+
                 var tipoUsuario = await _agendamentoRepository.ObterTipoUsuarioAsync(criarAgendamento.ResponsavelId);
                 if (tipoUsuario == TipoUsuario.PROFISSIONAL)
                     return BadRequest(new { erro = "Profissional depende da empresa. Informe a empresa responsavel pelo agendamento." });
@@ -125,6 +149,18 @@ namespace SaaS.Api.Controllers
             {
                 return StatusCode(500, new { erro = "Nao foi possivel criar o agendamento." });
             }
+        }
+
+        [HttpGet("clientes")]
+        [Authorize(Roles = "EMPRESA,AUTONOMO,PROFISSIONAL")]
+        public async Task<IActionResult> ListarClientes()
+        {
+            if (!User.TryGetUsuarioId(out var usuarioId)) return Unauthorized();
+            if (!await ProfissionalPodeAcessarAgenda(usuarioId)) return Forbid();
+            if (_usuarios == null) return StatusCode(503);
+            var usuarios = await _usuarios.ListarUsuarios();
+            return Ok(usuarios.Where(u => u.TipoUsuario == TipoUsuario.CLIENTE)
+                .OrderBy(u => u.Nome).Select(u => new { u.Id, u.Nome }));
         }
 
         [HttpGet("horarios-disponiveis")]
