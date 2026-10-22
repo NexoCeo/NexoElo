@@ -425,10 +425,71 @@ public class AgendamentoControllerTests
                 new DateTime(2026, 8, 20, 8, 0, 0)));
     }
 
-    private static ControllerContext CreateControllerContext(int usuarioId)
+    [Theory]
+    [InlineData("EMPRESA")]
+    [InlineData("AUTONOMO")]
+    public async Task PrestadorNaoPodeAgendarEmNomeDeOutro(string papel)
+    {
+        var repository = new Mock<IAgendamentoRepository>();
+        var controller = new AgendamentoController(repository.Object,
+            Mock.Of<IVinculoRepository>(), Mock.Of<IHubContext<AgendaHub>>(),
+            Mock.Of<ILogger<AgendamentoController>>())
+        { ControllerContext = CreateControllerContext(7, papel) };
+        var result = await controller.CriarAgendamento(new CreateAgendamentoModel
+        { ClienteId = 4, ResponsavelId = 8, ServicoId = 2, DataAgendamento = DateTime.UtcNow.AddDays(1) });
+        Assert.IsType<ForbidResult>(result);
+        repository.Verify(r => r.CriarAgendamentoAsync(It.IsAny<AgendamentoModel>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProfissionalNaoPodeAgendarParaOutroProfissional()
+    {
+        var repository = new Mock<IAgendamentoRepository>();
+        var vinculos = new Mock<IVinculoRepository>();
+        vinculos.Setup(v => v.ObterVinculoAtualDoProfissionalAsync(9))
+            .ReturnsAsync(new VinculoProfissionalModel { EmpresaId = 7, VinculoStatus = "APROVADO" });
+        var controller = new AgendamentoController(repository.Object,
+            vinculos.Object, Mock.Of<IHubContext<AgendaHub>>(),
+            Mock.Of<ILogger<AgendamentoController>>())
+        { ControllerContext = CreateControllerContext(9, "PROFISSIONAL") };
+        var result = await controller.CriarAgendamento(new CreateAgendamentoModel
+        { ClienteId = 4, ResponsavelId = 7, ProfissionalId = 10, ServicoId = 2, DataAgendamento = DateTime.UtcNow.AddDays(1) });
+        Assert.IsType<ForbidResult>(result);
+        repository.Verify(r => r.CriarAgendamentoAsync(It.IsAny<AgendamentoModel>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("EMPRESA", 7, 9)]
+    [InlineData("AUTONOMO", 7, 0)]
+    [InlineData("PROFISSIONAL", 9, 9)]
+    public async Task PrestadorAgendaParaClienteSelecionado(string papel, int usuarioId, int profissionalId)
+    {
+        var repository = new Mock<IAgendamentoRepository>();
+        repository.Setup(r => r.ObterTipoUsuarioAsync(7))
+            .ReturnsAsync(papel == "AUTONOMO" ? TipoUsuario.AUTONOMO : TipoUsuario.EMPRESA);
+        repository.Setup(r => r.CriarAgendamentoAsync(It.IsAny<AgendamentoModel>()))
+            .ReturnsAsync((AgendamentoModel item) => item);
+        var usuarios = new Mock<IUsuarioRepository>();
+        usuarios.Setup(u => u.ListarUsuarioPorId(4))
+            .ReturnsAsync(new UsuarioModel { Id = 4, Nome = "Cliente", TipoUsuario = TipoUsuario.CLIENTE });
+        var vinculos = new Mock<IVinculoRepository>();
+        vinculos.Setup(v => v.ObterVinculoAtualDoProfissionalAsync(9))
+            .ReturnsAsync(new VinculoProfissionalModel { EmpresaId = 7, VinculoStatus = "APROVADO" });
+        var controller = new AgendamentoController(repository.Object,
+            vinculos.Object, Mock.Of<IHubContext<AgendaHub>>(),
+            Mock.Of<ILogger<AgendamentoController>>(), usuarios: usuarios.Object)
+        { ControllerContext = CreateControllerContext(usuarioId, papel) };
+        var result = await controller.CriarAgendamento(new CreateAgendamentoModel
+        { ClienteId = 4, ResponsavelId = 7, ProfissionalId = profissionalId == 0 ? null : profissionalId,
+          ServicoId = 2, DataAgendamento = DateTime.UtcNow.AddDays(1) });
+        Assert.IsType<OkObjectResult>(result);
+        repository.Verify(r => r.CriarAgendamentoAsync(It.Is<AgendamentoModel>(a => a.ClienteId == 4)), Times.Once);
+    }
+
+    private static ControllerContext CreateControllerContext(int usuarioId, string papel = "CLIENTE")
     {
         var identity = new ClaimsIdentity(
-            new[] { new Claim(ClaimTypes.NameIdentifier, usuarioId.ToString()) },
+            new[] { new Claim(ClaimTypes.NameIdentifier, usuarioId.ToString()), new Claim(ClaimTypes.Role, papel) },
             "Test");
 
         return new ControllerContext
