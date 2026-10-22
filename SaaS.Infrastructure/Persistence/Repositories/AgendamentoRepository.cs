@@ -38,6 +38,22 @@ namespace SaaS.Infrastructure.Persistence.Repositories
 
                 await AdquirirBloqueioCliente(connection, transaction, clienteFk);
 
+                // Regulariza agendamentos vencidos antes de verificar o bloqueio global.
+                // Timestamp no banco representa a hora local de Sao Paulo.
+                await using (var expirar = new NpgsqlCommand(@"
+                    UPDATE AGENDAMENTOS
+                    SET STATUS_AGENDAMENTO = 'CANCELADO'
+                    WHERE CLIENTE_FK = @ClienteFk
+                      AND UPPER(TRIM(STATUS_AGENDAMENTO)) = 'AGENDADO'
+                      AND DATA_AGENDAMENTO <= @Limite", connection, transaction))
+                {
+                    expirar.Parameters.AddWithValue("@ClienteFk", clienteFk);
+                    expirar.Parameters.Add("@Limite", NpgsqlDbType.Timestamp).Value =
+                        DateTime.SpecifyKind(ObterAgoraSaoPaulo().AddHours(-24), DateTimeKind.Unspecified);
+                    await expirar.ExecuteNonQueryAsync();
+                }
+
+
                 var agendamentoAtivo = await ObterDataAgendamentoAtivoCliente(
                     connection,
                     transaction,
