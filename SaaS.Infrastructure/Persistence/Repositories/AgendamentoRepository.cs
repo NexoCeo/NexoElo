@@ -980,7 +980,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     FROM AGENDAMENTOS A
                     INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
                     WHERE A.PRESTADOR_FK = @PrestadorId
-                      AND A.STATUS_AGENDAMENTO <> 'CANCELADO'
+                      AND UPPER(TRIM(A.STATUS_AGENDAMENTO)) = 'AGENDADO'
                       AND A.DATA_AGENDAMENTO < @Fim
                       AND A.DATA_AGENDAMENTO
                             + (GREATEST(S.TEMPO_ESTIMADO_MINUTOS, 1) * INTERVAL '1 minute') > @Inicio
@@ -1094,7 +1094,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 FROM AGENDAMENTOS A
                 INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
                 WHERE A.PRESTADOR_FK = @PrestadorId
-                  AND A.STATUS_AGENDAMENTO <> 'CANCELADO'
+                  AND UPPER(TRIM(A.STATUS_AGENDAMENTO)) = 'AGENDADO'
                   AND A.DATA_AGENDAMENTO >= @Inicio
                   AND A.DATA_AGENDAMENTO < @Fim
                 ORDER BY A.DATA_AGENDAMENTO", connection, transaction);
