@@ -405,6 +405,37 @@ namespace SaaS.Api.Controllers
             }
         }
 
+        // Empresa pode editar apenas os profissionais vinculados e aprovados.
+        [HttpPut("empresa/profissionais/{id:int}")]
+        [Authorize(Roles = "EMPRESA")]
+        public async Task<IActionResult> EditarProfissionalEmpresa(int id, [FromBody] UpdatePerfilModel request)
+        {
+            if (!User.TryGetUsuarioId(out var empresaId))
+                return Forbid();
+            if (request == null || string.IsNullOrWhiteSpace(request.Nome) ||
+                string.IsNullOrWhiteSpace(request.Email) || !MailAddress.TryCreate(request.Email.Trim(), out _))
+                return BadRequest(new { erro = "Informe nome e email validos." });
+            if (!string.IsNullOrWhiteSpace(request.Telefone))
+            {
+                var digits = new string(request.Telefone.Where(char.IsDigit).ToArray());
+                if (digits.Length is < 10 or > 11)
+                    return BadRequest(new { erro = "Informe um telefone valido com DDD." });
+            }
+            var vinculo = await _usuarioRepository.ObterStatusVinculoProfissionalEmpresa(id, empresaId);
+            if (!string.Equals(vinculo, "APROVADO", StringComparison.OrdinalIgnoreCase))
+                return Forbid();
+            try
+            {
+                var atualizado = await _usuarioRepository.AtualizarPerfilUsuario(
+                    id, request.Nome.Trim(), request.Email.Trim(), request.Telefone, null, false);
+                return atualizado == null ? NotFound() : Ok(CriarRespostaUsuario(atualizado));
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { erro = ex.Message });
+            }
+        }
+
         [HttpPut("{id:int}/perfil")]
         [HttpPatch("{id:int}/perfil")]
         [Consumes("multipart/form-data")]
