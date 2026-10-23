@@ -157,10 +157,16 @@ namespace SaaS.Api.Controllers
         {
             if (!User.TryGetUsuarioId(out var usuarioId)) return Unauthorized();
             if (!await ProfissionalPodeAcessarAgenda(usuarioId)) return Forbid();
-            if (_usuarios == null) return StatusCode(503);
-            var usuarios = await _usuarios.ListarUsuarios();
-            return Ok(usuarios.Where(u => u.TipoUsuario == TipoUsuario.CLIENTE)
-                .OrderBy(u => u.Nome).Select(u => new { u.Id, u.Nome }));
+            // A listagem nunca deve retornar o cadastro global de clientes.
+            var prestadorId = usuarioId;
+            if (User.IsInRole(nameof(TipoUsuario.PROFISSIONAL)))
+            {
+                var vinculo = await _vinculoRepository.ObterVinculoAtualDoProfissionalAsync(usuarioId);
+                if (vinculo?.VinculoStatus != "APROVADO") return Forbid();
+                prestadorId = vinculo.EmpresaId;
+            }
+            var clientes = await _agendamentoRepository.ListarClientesDoPrestadorAsync(prestadorId);
+            return Ok(clientes.Select(c => new { c.Id, c.Nome }));
         }
 
         [HttpGet("horarios-disponiveis")]
