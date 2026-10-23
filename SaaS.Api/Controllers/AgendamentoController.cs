@@ -153,7 +153,7 @@ namespace SaaS.Api.Controllers
 
         [HttpGet("clientes")]
         [Authorize(Roles = "EMPRESA,AUTONOMO,PROFISSIONAL")]
-        public async Task<IActionResult> ListarClientes()
+        public async Task<IActionResult> ListarClientes([FromQuery] string? busca = null)
         {
             if (!User.TryGetUsuarioId(out var usuarioId)) return Unauthorized();
             if (!await ProfissionalPodeAcessarAgenda(usuarioId)) return Forbid();
@@ -165,7 +165,7 @@ namespace SaaS.Api.Controllers
                 if (vinculo?.VinculoStatus != "APROVADO") return Forbid();
                 prestadorId = vinculo.EmpresaId;
             }
-            var clientes = await _agendamentoRepository.ListarClientesDoPrestadorAsync(prestadorId);
+            var clientes = await _agendamentoRepository.ListarClientesDoPrestadorAsync(prestadorId, busca);
             return Ok(clientes.Select(c => new { c.Id, c.Nome }));
         }
 
