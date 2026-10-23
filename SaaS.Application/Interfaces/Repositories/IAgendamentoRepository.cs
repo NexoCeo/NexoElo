@@ -5,6 +5,7 @@ namespace SaaS.Application.Interfaces.Repositories
 {
     public interface IAgendamentoRepository
     {
+        Task<List<(int Id, string Nome)>> ListarClientesDoPrestadorAsync(int prestadorId);
         Task<AgendamentoModel> CriarAgendamentoAsync(AgendamentoModel agendamento);
         Task<List<HorarioDisponivelModel>> ListarHorariosDisponiveis(
             int responsavelId,
