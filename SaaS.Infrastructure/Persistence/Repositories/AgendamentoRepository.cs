@@ -20,6 +20,29 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             _connectionString = configuration.GetConnectionString("DefaultConnection");
         }
 
+        // Apenas clientes que ja possuem relacionamento com este prestador.
+        // Nao revelar IDs ou nomes de clientes de outros estabelecimentos.
+        public async Task<List<(int Id, string Nome)>> ListarClientesDoPrestadorAsync(int prestadorId)
+        {
+            var resultado = new List<(int Id, string Nome)>();
+            const string sql = @"
+                SELECT DISTINCT CU.ID_USUARIO, CU.NOME_USUARIO
+                FROM AGENDAMENTOS A
+                JOIN CLIENTES C ON C.ID_CLIENTE = A.CLIENTE_FK
+                JOIN USUARIOS CU ON CU.ID_USUARIO = C.USUARIO_FK
+                JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
+                WHERE S.USUARIO_FK = @PrestadorId OR A.PRESTADOR_FK = @PrestadorId
+                ORDER BY CU.NOME_USUARIO";
+            await using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@PrestadorId", prestadorId);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                resultado.Add((reader.GetInt32(0), reader.GetString(1)));
+            return resultado;
+        }
+
         public async Task<AgendamentoModel> CriarAgendamentoAsync(AgendamentoModel agendamento)
         {
             ValidarDadosBasicos(agendamento);
