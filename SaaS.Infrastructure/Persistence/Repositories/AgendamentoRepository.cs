@@ -22,21 +22,36 @@ namespace SaaS.Infrastructure.Persistence.Repositories
 
         // Apenas clientes que ja possuem relacionamento com este prestador.
         // Nao revelar IDs ou nomes de clientes de outros estabelecimentos.
-        public async Task<List<(int Id, string Nome)>> ListarClientesDoPrestadorAsync(int prestadorId)
+        public async Task<List<(int Id, string Nome)>> ListarClientesDoPrestadorAsync(int prestadorId, string? busca = null)
         {
             var resultado = new List<(int Id, string Nome)>();
+            // Clientes recorrentes por padrao; a busca permite agendar clientes de
+            // outros prestadores sem enumerar o cadastro inteiro da plataforma.
+            var pesquisando = !string.IsNullOrWhiteSpace(busca);
+            if (pesquisando && busca!.Trim().Length < 3)
+                return resultado;
             const string sql = @"
-                SELECT DISTINCT CU.ID_USUARIO, CU.NOME_USUARIO
-                FROM AGENDAMENTOS A
-                JOIN CLIENTES C ON C.ID_CLIENTE = A.CLIENTE_FK
-                JOIN USUARIOS CU ON CU.ID_USUARIO = C.USUARIO_FK
-                JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
-                WHERE S.USUARIO_FK = @PrestadorId OR A.PRESTADOR_FK = @PrestadorId
-                ORDER BY CU.NOME_USUARIO";
+                SELECT CU.ID_USUARIO, CU.NOME_USUARIO
+                FROM USUARIOS CU
+                WHERE CU.TIPO_USUARIO = 'CLIENTE'
+                  AND (
+                    (@Busca IS NULL AND EXISTS (
+                        SELECT 1 FROM AGENDAMENTOS A
+                        JOIN CLIENTES C ON C.ID_CLIENTE = A.CLIENTE_FK
+                        JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
+                        WHERE C.USUARIO_FK = CU.ID_USUARIO
+                          AND (S.USUARIO_FK = @PrestadorId OR A.PRESTADOR_FK = @PrestadorId)
+                    ))
+                    OR (@Busca IS NOT NULL AND CU.NOME_USUARIO ILIKE @Busca ESCAPE '\\')
+                  )
+                ORDER BY CU.NOME_USUARIO
+                LIMIT 30";
             await using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("@PrestadorId", prestadorId);
+            var termo = busca?.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+            command.Parameters.AddWithValue("@Busca", (object?)(pesquisando ? "%" + termo + "%" : null) ?? DBNull.Value);
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
                 resultado.Add((reader.GetInt32(0), reader.GetString(1)));
