@@ -42,7 +42,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         WHERE C.USUARIO_FK = CU.ID_USUARIO
                           AND (S.USUARIO_FK = @PrestadorId OR A.PRESTADOR_FK = @PrestadorId)
                     ))
-                    OR (@Busca IS NOT NULL AND translate(lower(CU.NOME_USUARIO), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn') LIKE @Busca ESCAPE '\\')
+                    OR (@Busca IS NOT NULL AND strpos(translate(lower(CU.NOME_USUARIO), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn'), @Busca) > 0)
                   )
                 ORDER BY CU.NOME_USUARIO
                 LIMIT 30";
@@ -55,9 +55,9 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             {
                 termo = new string(termo.Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray())
                     .Normalize(System.Text.NormalizationForm.FormC)
-                    .Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+                    ;
             }
-            command.Parameters.Add("@Busca", NpgsqlDbType.Text).Value = (object?)(pesquisando ? "%" + termo + "%" : null) ?? DBNull.Value;
+            command.Parameters.Add("@Busca", NpgsqlDbType.Text).Value = (object?)(pesquisando ? termo : null) ?? DBNull.Value;
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
                 resultado.Add((reader.GetInt32(0), reader.GetString(1)));
