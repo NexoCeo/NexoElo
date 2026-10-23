@@ -39,7 +39,7 @@ namespace SaaS.Api.Controllers
             _logger = logger;
             _planos = planos;
             _usuarios = usuarios;
-            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _configuration = configuration ?? new ConfigurationBuilder().Build();
         }
 
         // POST: api/Agendamento
@@ -451,7 +451,7 @@ namespace SaaS.Api.Controllers
                     (AGENDAMENTO_ID, DESTINATARIO_USUARIO_ID, TITULO, MENSAGEM, DATA_AGENDAMENTO)
                 SELECT A.ID_AGENDAMENTO, destinatario.ID_USUARIO, 'Novo agendamento',
                     CU.NOME_USUARIO || ' agendou ' || S.NOME_SERVICO ||
-                    CASE WHEN U.TIPO_USUARIO = 'EMPRESA'
+                    CASE WHEN U.TIPO_USUARIO = 'EMPRESA' AND destinatario.ID_USUARIO = U.ID_USUARIO
                          THEN ' com ' || PU.NOME_USUARIO ELSE '' END ||
                     ' para ' || TO_CHAR(A.DATA_AGENDAMENTO, 'DD/MM/YYYY') ||
                     ' às ' || TO_CHAR(A.DATA_AGENDAMENTO, 'HH24:MI'),
