@@ -1,3 +1,4 @@
+using Npgsql;
 using SaaS.Domain.Models;
 using SaaS.Application.Interfaces.Repositories;
 using SaaS.Domain.Enums;
@@ -22,6 +23,7 @@ namespace SaaS.Api.Controllers
         private readonly ILogger<AgendamentoController> _logger;
         private readonly PlanoAcessoService? _planos;
         private readonly IUsuarioRepository? _usuarios;
+        private readonly IConfiguration _configuration;
 
         public AgendamentoController(
             IAgendamentoRepository agendamentoRepository,
@@ -29,7 +31,7 @@ namespace SaaS.Api.Controllers
             IHubContext<AgendaHub> agendaHub,
             ILogger<AgendamentoController> logger,
             PlanoAcessoService? planos = null,
-            IUsuarioRepository? usuarios = null)
+            IUsuarioRepository? usuarios = null, IConfiguration? configuration = null)
         {
             _agendamentoRepository = agendamentoRepository;
             _vinculoRepository = vinculoRepository;
@@ -37,6 +39,7 @@ namespace SaaS.Api.Controllers
             _logger = logger;
             _planos = planos;
             _usuarios = usuarios;
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         }
 
         // POST: api/Agendamento
@@ -113,6 +116,14 @@ namespace SaaS.Api.Controllers
                 };
 
                 var agendamentoCriado = await _agendamentoRepository.CriarAgendamentoAsync(novoAgendamento);
+                if (User.IsInRole(nameof(TipoUsuario.CLIENTE)))
+                {
+                    try { await RegistrarNotificacoesClienteAsync(agendamentoCriado.Id); }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Falha ao registrar notificacoes do agendamento {AgendamentoId}", agendamentoCriado.Id);
+                    }
+                }
                 try
                 {
                     await NotificarAgendaAtualizada(
@@ -427,6 +438,42 @@ namespace SaaS.Api.Controllers
             {
                 return StatusCode(500, new { erro = "Não foi possível concluir os agendamentos do dia." });
             }
+        }
+
+
+        private async Task RegistrarNotificacoesClienteAsync(int agendamentoId)
+        {
+            // Apenas agendamentos criados por CLIENTE chegam aqui.
+            // A empresa recebe uma notificacao e o profissional selecionado outra.
+            // O autonomo recebe apenas uma; evita duplicidade via indice unico.
+            const string sql = @"
+                INSERT INTO NOTIFICACOES_AGENDAMENTO
+                    (AGENDAMENTO_ID, DESTINATARIO_USUARIO_ID, TITULO, MENSAGEM, DATA_AGENDAMENTO)
+                SELECT A.ID_AGENDAMENTO, destinatario.ID_USUARIO, 'Novo agendamento',
+                    CU.NOME_USUARIO || ' agendou ' || S.NOME_SERVICO ||
+                    CASE WHEN U.TIPO_USUARIO = 'EMPRESA'
+                         THEN ' com ' || PU.NOME_USUARIO ELSE '' END ||
+                    ' para ' || TO_CHAR(A.DATA_AGENDAMENTO, 'DD/MM/YYYY') ||
+                    ' às ' || TO_CHAR(A.DATA_AGENDAMENTO, 'HH24:MI'),
+                    A.DATA_AGENDAMENTO
+                FROM AGENDAMENTOS A
+                JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
+                JOIN USUARIOS U ON U.ID_USUARIO = S.USUARIO_FK
+                JOIN USUARIOS PU ON PU.ID_USUARIO = A.PRESTADOR_FK
+                JOIN CLIENTES C ON C.ID_CLIENTE = A.CLIENTE_FK
+                JOIN USUARIOS CU ON CU.ID_USUARIO = C.USUARIO_FK
+                CROSS JOIN LATERAL (
+                    SELECT U.ID_USUARIO
+                    UNION
+                    SELECT A.PRESTADOR_FK WHERE U.TIPO_USUARIO = 'EMPRESA'
+                ) destinatario
+                WHERE A.ID_AGENDAMENTO = @id
+                ON CONFLICT (AGENDAMENTO_ID, DESTINATARIO_USUARIO_ID) DO NOTHING";
+            await using var con = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            await con.OpenAsync();
+            await using var cmd = new NpgsqlCommand(sql, con);
+            cmd.Parameters.AddWithValue("@id", agendamentoId);
+            await cmd.ExecuteNonQueryAsync();
         }
 
         private async Task NotificarAgendaAtualizada(
