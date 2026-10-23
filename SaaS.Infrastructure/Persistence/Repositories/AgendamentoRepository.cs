@@ -51,7 +51,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("@PrestadorId", prestadorId);
             var termo = busca?.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
-            command.Parameters.AddWithValue("@Busca", (object?)(pesquisando ? "%" + termo + "%" : null) ?? DBNull.Value);
+            command.Parameters.Add("@Busca", NpgsqlDbType.Text).Value = (object?)(pesquisando ? "%" + termo + "%" : null) ?? DBNull.Value;
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
                 resultado.Add((reader.GetInt32(0), reader.GetString(1)));
