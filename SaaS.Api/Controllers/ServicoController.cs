@@ -41,8 +41,10 @@ namespace SaaS.Api.Controllers
             if (_planos != null)
             {
                 var acesso = await _planos.ConsultarAsync(usuarioId);
-                if (!acesso.AcessoAtivo || await _planos.ContarServicosAsync(usuarioId) >= acesso.LimiteServicos)
-                    return StatusCode(403, new { erro = "Assinatura inativa ou limite de servicos atingido." });
+                if (!acesso.AcessoAtivo)
+                    return StatusCode(403, new { codigo = "SUBSCRIPTION_INACTIVE", erro = "Assinatura inativa." });
+                if (await _planos.ContarServicosAsync(usuarioId) >= acesso.LimiteServicos)
+                    return StatusCode(403, new { codigo = "PLAN_LIMIT_REACHED", recurso = "SERVICO", limite = acesso.LimiteServicos, plano = acesso.Plano, erro = "Limite de serviços do plano atingido." });
             }
 
             servico.UsuarioFk = usuarioId;
@@ -72,8 +74,10 @@ namespace SaaS.Api.Controllers
             if (_planos != null)
             {
                 var acesso = await _planos.ConsultarAsync(usuarioId);
-                if (!acesso.AcessoAtivo || await _planos.ContarServicosAsync(usuarioId) >= acesso.LimiteServicos)
-                    return StatusCode(403, new { erro = "Assinatura inativa ou limite de servicos atingido." });
+                if (!acesso.AcessoAtivo)
+                    return StatusCode(403, new { codigo = "SUBSCRIPTION_INACTIVE", erro = "Assinatura inativa." });
+                if (await _planos.ContarServicosAsync(usuarioId) >= acesso.LimiteServicos)
+                    return StatusCode(403, new { codigo = "PLAN_LIMIT_REACHED", recurso = "SERVICO", limite = acesso.LimiteServicos, plano = acesso.Plano, erro = "Limite de serviços do plano atingido." });
             }
 
             string? caminhoImagem = null;
