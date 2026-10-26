@@ -76,6 +76,17 @@ namespace SaaS.Infrastructure.Services
                 await _assinaturaRepository.AtualizarClienteStripe(usuario.UsuarioId, customerId);
             }
 
+            // Alinhar o e-mail de cobrança com a normalização usada no contexto do usuário.
+            // Atualiza também clientes Stripe criados antes desta correção.
+            var emailNormalizado = usuario.Email?.Trim().ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(emailNormalizado))
+            {
+                var customerService = new CustomerService(Client);
+                var customer = await customerService.GetAsync(customerId);
+                if (!string.Equals(customer.Email, emailNormalizado, StringComparison.Ordinal))
+                    await customerService.UpdateAsync(customerId, new CustomerUpdateOptions { Email = emailNormalizado });
+            }
+
             var metadata = CriarMetadata(usuario.UsuarioId, priceId);
             var options = new Stripe.Checkout.SessionCreateOptions
             {
@@ -267,7 +278,7 @@ namespace SaaS.Infrastructure.Services
             var customer = await customerService.CreateAsync(new CustomerCreateOptions
             {
                 Name = usuario.Nome,
-                Email = usuario.Email,
+                Email = usuario.Email?.Trim().ToLowerInvariant(),
                 Metadata = new Dictionary<string, string>
                 {
                     ["usuario_id"] = usuario.UsuarioId.ToString()
