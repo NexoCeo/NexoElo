@@ -21,20 +21,19 @@ public sealed class PlanoAcessoService
         var registro = await _assinaturas.ObterAssinaturaUsuario(usuarioId)
             ?? throw new KeyNotFoundException("Usuario nao encontrado.");
 
-        var inicio = registro.DataCriacaoUsuario ?? registro.DataInicioAssinatura ?? DateTime.UtcNow;
-        var fimGratis = inicio.AddDays(30);
         var agora = DateTime.UtcNow;
+        // O acesso aos recursos do SaaS depende de uma assinatura Stripe confirmada.
+        // Cadastro e checkout pendentes jamais liberam o painel.
         var pago = (registro.Status is StatusAssinatura.ATIVA or StatusAssinatura.CANCELAMENTO_PENDENTE)
+            && !string.IsNullOrWhiteSpace(registro.StripeSubscriptionId)
             && (!registro.DataFimAssinatura.HasValue || registro.DataFimAssinatura.Value > agora);
-        // O período grátis não é reiniciado ao tentar criar um checkout.
-        var gratis = !pago && string.IsNullOrEmpty(registro.StripeSubscriptionId) && agora < fimGratis;
-        var plano = pago ? ResolverPlano(registro.StripePriceId) : gratis ? "GRATIS" : "SEM_PLANO";
-        var habilitado = (pago && plano != "SEM_PLANO") || gratis;
+        var plano = pago ? ResolverPlano(registro.StripePriceId) : "SEM_PLANO";
+        var habilitado = pago && plano != "SEM_PLANO";
         return new PlanoAcesso(
-            plano, habilitado, plano is "GRATIS" or "INTERMEDIARIO" or "AVANCADO",
+            plano, habilitado, plano is "INTERMEDIARIO" or "AVANCADO",
             plano switch { "BASICO" => 4, "INTERMEDIARIO" => 8, _ => int.MaxValue },
             plano switch { "BASICO" => 2, "INTERMEDIARIO" => 4, _ => int.MaxValue },
-            gratis ? fimGratis : registro.DataFimAssinatura, registro.Status.ToString());
+            registro.DataFimAssinatura, registro.Status.ToString());
     }
 
     private async Task VerificarPersistenciaAsync()
