@@ -24,7 +24,7 @@ public sealed class SuporteController : ControllerBase
     [HttpPost("chamados")]
     public async Task<IActionResult> AbrirChamado([FromBody] SolicitarSuporte data, CancellationToken cancellationToken)
     {
-        if (!User.TryGetUsuarioId(out _)) return Unauthorized();
+        if (!User.TryGetUsuarioId(out var usuarioId)) return Unauthorized();
         if (string.IsNullOrWhiteSpace(data.Assunto) || string.IsNullOrWhiteSpace(data.Descricao)
             || data.Assunto.Trim().Length > 180 || data.Descricao.Trim().Length > 4000)
             return BadRequest(new { message = "Informe assunto e descrição válidos." });
@@ -46,6 +46,7 @@ public sealed class SuporteController : ControllerBase
             description = data.Descricao.Trim(),
             requesterName,
             requesterEmail,
+            externalUserId = usuarioId.ToString(),
             channel = canal
         });
         try
@@ -67,4 +68,61 @@ public sealed class SuporteController : ControllerBase
             return StatusCode(502, new { message = "Não foi possível comunicar com o NexoDesk." });
         }
     }
+    private async Task<(HttpResponseMessage? Response, IActionResult? Error)> Forward(HttpMethod method,string path,object? payload,CancellationToken ct)
+    {
+        var apiUrl=_configuration["NexoDesk:ApiUrl"];
+        var integrationKey=_configuration["NexoDesk:IntegrationKey"];
+        if(string.IsNullOrWhiteSpace(apiUrl)||string.IsNullOrWhiteSpace(integrationKey))
+            return (null,StatusCode(503,new{message="Suporte indisponível."}));
+        using var request=new HttpRequestMessage(method,apiUrl.TrimEnd('/')+path);
+        request.Headers.TryAddWithoutValidation("X-NexoDesk-Integration-Key",integrationKey);
+        if(payload is not null)request.Content=JsonContent.Create(payload);
+        try{
+            var client=_clients.CreateClient();
+            client.Timeout=TimeSpan.FromSeconds(12);
+            var response=await client.SendAsync(request,ct);
+            return (response,null);
+        }catch(HttpRequestException){return(null,StatusCode(502,new{message="Falha de comunicação com o suporte."}));}
+        catch(OperationCanceledException) when(!ct.IsCancellationRequested){return(null,StatusCode(504,new{message="Tempo limite do suporte."}));}
+    }
+
+    private async Task<IActionResult> Proxy(HttpMethod method,string path,object? payload,CancellationToken ct)
+    {
+        var (response,error)=await Forward(method,path,payload,ct);
+        if(error is not null)return error;
+        using(response!){
+            if(!response.IsSuccessStatusCode)return StatusCode((int)response.StatusCode,new{message="Não foi possível executar a solicitação."});
+            var json=await response.Content.ReadAsStringAsync(ct);
+            return Content(json,"application/json");
+        }
+    }
+
+    [HttpGet("historico")]
+    public Task<IActionResult> Historico(CancellationToken ct)
+    {
+        if(!User.TryGetUsuarioId(out var id))return Task.FromResult<IActionResult>(Unauthorized());
+        return Proxy(HttpMethod.Get,"/api/integrations/support/history?externalUserId="+id,null,ct);
+    }
+
+    [HttpGet("conversas/{ticketId:guid}/mensagens")]
+    public Task<IActionResult> Mensagens(Guid ticketId,CancellationToken ct)
+    {
+        if(!User.TryGetUsuarioId(out var id))return Task.FromResult<IActionResult>(Unauthorized());
+        return Proxy(HttpMethod.Get,$"/api/integrations/support/{ticketId}/messages?externalUserId={id}",null,ct);
+    }
+
+    public sealed record EnviarMensagem(string Mensagem);
+
+    [HttpPost("conversas/{ticketId:guid}/mensagens")]
+    public Task<IActionResult> EnviarMensagemChat(Guid ticketId,[FromBody] EnviarMensagem body,CancellationToken ct)
+    {
+        if(!User.TryGetUsuarioId(out var id))return Task.FromResult<IActionResult>(Unauthorized());
+        if(string.IsNullOrWhiteSpace(body.Mensagem)||body.Mensagem.Length>4000)return Task.FromResult<IActionResult>(BadRequest(new{message="Mensagem inválida."}));
+        return Proxy(HttpMethod.Post,$"/api/integrations/support/{ticketId}/messages",new{
+            externalUserId=id.ToString(),
+            senderName=User.FindFirstValue(ClaimTypes.Name)??"Cliente",
+            body=body.Mensagem.Trim()
+        },ct);
+    }
+
 }
