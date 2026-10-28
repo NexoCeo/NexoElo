@@ -101,7 +101,9 @@ public sealed class SuporteController : ControllerBase
     public Task<IActionResult> Historico(CancellationToken ct)
     {
         if(!User.TryGetUsuarioId(out var id))return Task.FromResult<IActionResult>(Unauthorized());
-        return Proxy(HttpMethod.Get,"/api/integrations/support/history?externalUserId="+id,null,ct);
+        var email=User.FindFirstValue(ClaimTypes.Email);
+        var uri="/api/integrations/support/history?externalUserId="+Uri.EscapeDataString(id.ToString())+(string.IsNullOrWhiteSpace(email)?"":"&requesterEmail="+Uri.EscapeDataString(email.Trim()));
+        return Proxy(HttpMethod.Get,uri,null,ct);
     }
 
     [HttpGet("conversas/{ticketId:guid}/mensagens")]
