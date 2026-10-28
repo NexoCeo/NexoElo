@@ -19,7 +19,7 @@ public sealed class SuporteController : ControllerBase
         _clients = clients;
     }
 
-    public sealed record SolicitarSuporte(string Assunto, string Descricao);
+    public sealed record SolicitarSuporte(string Assunto, string Descricao, string? Canal);
 
     [HttpPost("chamados")]
     public async Task<IActionResult> AbrirChamado([FromBody] SolicitarSuporte data, CancellationToken cancellationToken)
@@ -29,6 +29,8 @@ public sealed class SuporteController : ControllerBase
             || data.Assunto.Trim().Length > 180 || data.Descricao.Trim().Length > 4000)
             return BadRequest(new { message = "Informe assunto e descrição válidos." });
 
+        var canal=(data.Canal??"chat").Trim().ToLowerInvariant();
+        if(canal != "chat" && canal != "email")return BadRequest(new{message="Canal inválido."});
         var url = _configuration["NexoDesk:ApiUrl"];
         var key = _configuration["NexoDesk:IntegrationKey"];
         if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(key))
@@ -43,7 +45,8 @@ public sealed class SuporteController : ControllerBase
             subject = data.Assunto.Trim(),
             description = data.Descricao.Trim(),
             requesterName,
-            requesterEmail
+            requesterEmail,
+            channel = canal
         });
         try
         {
