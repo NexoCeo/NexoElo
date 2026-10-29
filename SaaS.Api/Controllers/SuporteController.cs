@@ -97,6 +97,30 @@ public sealed class SuporteController : ControllerBase
         }
     }
 
+    [HttpGet("sessao-widget")]
+    public async Task<IActionResult> SessaoWidget(CancellationToken ct)
+    {
+        if(!User.TryGetUsuarioId(out var userId))return Unauthorized();
+        var apiUrl=_configuration["NexoDesk:ApiUrl"];
+        var key=_configuration["NexoDesk:IntegrationKey"];
+        if(string.IsNullOrWhiteSpace(apiUrl)||string.IsNullOrWhiteSpace(key))
+            return StatusCode(503,new{message="Integração do widget não configurada."});
+        using var request=new HttpRequestMessage(HttpMethod.Post,apiUrl.TrimEnd('/')+"/api/widget/session");
+        request.Headers.TryAddWithoutValidation("X-NexoDesk-Integration-Key",key);
+        request.Content=JsonContent.Create(new{
+            externalUserId=userId.ToString(),
+            name=User.FindFirstValue(ClaimTypes.Name)??"Cliente",
+            email=User.FindFirstValue(ClaimTypes.Email)??""
+        });
+        try{
+            var client=_clients.CreateClient();client.Timeout=TimeSpan.FromSeconds(12);
+            using var response=await client.SendAsync(request,ct);
+            if(!response.IsSuccessStatusCode)return StatusCode(502,new{message="Não foi possível obter a sessão do widget."});
+            return Content(await response.Content.ReadAsStringAsync(ct),"application/json");
+        }catch(HttpRequestException){return StatusCode(502,new{message="NexoDesk indisponível."});}
+        catch(OperationCanceledException) when(!ct.IsCancellationRequested){return StatusCode(504,new{message="Tempo limite do NexoDesk."});}
+    }
+
     [HttpGet("configuracao-widget")]
     public Task<IActionResult> ConfiguracaoWidget(CancellationToken ct)
     {
