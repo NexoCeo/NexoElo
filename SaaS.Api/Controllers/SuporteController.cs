@@ -97,6 +97,13 @@ public sealed class SuporteController : ControllerBase
         }
     }
 
+    [HttpGet("configuracao-widget")]
+    public Task<IActionResult> ConfiguracaoWidget(CancellationToken ct)
+    {
+        if(!User.TryGetUsuarioId(out _))return Task.FromResult<IActionResult>(Unauthorized());
+        return Proxy(HttpMethod.Get,"/api/integrations/support/widget-config",null,ct);
+    }
+
     [HttpGet("historico")]
     public Task<IActionResult> Historico(CancellationToken ct)
     {
