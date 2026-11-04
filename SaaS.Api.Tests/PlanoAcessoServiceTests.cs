@@ -78,4 +78,56 @@ public class PlanoAcessoServiceTests
         var acesso = await service.ConsultarAsync(1);
         Assert.False(acesso.AcessoAtivo);
     }
+    [Fact]
+    public async Task GratisNaoDependeDeRegistroNaStripe()
+    {
+        var service = Criar(new UsuarioAssinaturaInfoModel {
+            UsuarioId = 1, DataCriacaoUsuario = DateTime.SpecifyKind(DateTime.UtcNow.AddMinutes(-5), DateTimeKind.Unspecified),
+            Status = StatusAssinatura.NAO_ATIVA
+        });
+        var acesso = await service.ConsultarAsync(1);
+        Assert.Equal("GRATIS", acesso.Plano);
+        Assert.Equal("TRIAL", acesso.Status);
+        Assert.True(acesso.AcessoAtivo);
+        Assert.InRange(acesso.DataFim!.Value, DateTime.UtcNow.AddDays(29), DateTime.UtcNow.AddDays(31));
+    }
+
+    [Fact]
+    public async Task GratisExpiradoTemStatusEspecifico()
+    {
+        var service = Criar(new UsuarioAssinaturaInfoModel {
+            UsuarioId = 1, DataCriacaoUsuario = DateTime.UtcNow.AddDays(-31),
+            Status = StatusAssinatura.NAO_ATIVA
+        });
+        var acesso = await service.ConsultarAsync(1);
+        Assert.Equal("TRIAL_EXPIRADO", acesso.Status);
+        Assert.False(acesso.AcessoAtivo);
+    }
+
+    [Fact]
+    public async Task CheckoutPendenteNaoLiberaPlanoPagoNemReiniciaGratis()
+    {
+        var service = Criar(new UsuarioAssinaturaInfoModel {
+            UsuarioId = 1, DataCriacaoUsuario = DateTime.UtcNow.AddDays(-1),
+            Status = StatusAssinatura.PENDENTE, StripePriceId = "price_basic"
+        });
+        var acesso = await service.ConsultarAsync(1);
+        Assert.Equal("SEM_PLANO", acesso.Plano);
+        Assert.False(acesso.AcessoAtivo);
+        Assert.Equal("PENDENTE", acesso.Status);
+    }
+
+    [Fact]
+    public async Task AssinaturaExpiradaNaoVoltaAoGratis()
+    {
+        var service = Criar(new UsuarioAssinaturaInfoModel {
+            UsuarioId = 1, DataCriacaoUsuario = DateTime.UtcNow.AddDays(-1),
+            Status = StatusAssinatura.EXPIRADO, StripePriceId = "price_basic",
+            StripeSubscriptionId = "sub_expirada", DataFimAssinatura = DateTime.UtcNow.AddHours(-1)
+        });
+        var acesso = await service.ConsultarAsync(1);
+        Assert.Equal("SEM_PLANO", acesso.Plano);
+        Assert.False(acesso.AcessoAtivo);
+    }
+
 }
