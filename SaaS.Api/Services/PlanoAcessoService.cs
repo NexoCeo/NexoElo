@@ -22,18 +22,48 @@ public sealed class PlanoAcessoService
             ?? throw new KeyNotFoundException("Usuario nao encontrado.");
 
         var agora = DateTime.UtcNow;
-        // O acesso aos recursos do SaaS depende de uma assinatura Stripe confirmada.
-        // Cadastro e checkout pendentes jamais liberam o painel.
+        // Assinaturas pagas so liberam acesso apos confirmacao pela Stripe.
         var pago = (registro.Status is StatusAssinatura.ATIVA or StatusAssinatura.CANCELAMENTO_PENDENTE)
             && !string.IsNullOrWhiteSpace(registro.StripeSubscriptionId)
-            && (!registro.DataFimAssinatura.HasValue || registro.DataFimAssinatura.Value > agora);
-        var plano = pago ? ResolverPlano(registro.StripePriceId) : "SEM_PLANO";
-        var habilitado = pago && plano != "SEM_PLANO";
-        return new PlanoAcesso(
-            plano, habilitado, plano is "INTERMEDIARIO" or "AVANCADO",
-            plano switch { "BASICO" => 4, "INTERMEDIARIO" => 8, _ => int.MaxValue },
-            plano switch { "BASICO" => 2, "INTERMEDIARIO" => 4, _ => int.MaxValue },
+            && (!registro.DataFimAssinatura.HasValue || ComoUtc(registro.DataFimAssinatura.Value) > agora);
+        var planoPago = pago ? ResolverPlano(registro.StripePriceId) : "SEM_PLANO";
+        if (pago && planoPago != "SEM_PLANO")
+            return new PlanoAcesso(
+                planoPago, true, planoPago is "INTERMEDIARIO" or "AVANCADO",
+                planoPago switch { "BASICO" => 4, "INTERMEDIARIO" => 8, _ => int.MaxValue },
+                planoPago switch { "BASICO" => 2, "INTERMEDIARIO" => 4, _ => int.MaxValue },
+                registro.DataFimAssinatura, registro.Status.ToString());
+
+        // O teste comeca no cadastro e nao exige checkout. Uma assinatura Stripe
+        // existente, cancelada ou expirada, nunca pode reiniciar os 30 dias.
+        var elegivelGratis = registro.Status is StatusAssinatura.NAO_ATIVA or StatusAssinatura.TRIAL
+            && string.IsNullOrWhiteSpace(registro.StripeSubscriptionId)
+            && string.IsNullOrWhiteSpace(registro.StripePriceId)
+            && registro.DataCriacaoUsuario.HasValue;
+        if (elegivelGratis)
+        {
+            var inicio = ComoUtc(registro.DataCriacaoUsuario!.Value);
+            var fim = inicio.AddDays(30);
+            if (inicio <= agora && agora < fim)
+                return new PlanoAcesso("GRATIS", true, true, int.MaxValue, int.MaxValue,
+                    fim, StatusAssinatura.TRIAL.ToString());
+
+            if (agora >= fim)
+                return new PlanoAcesso("SEM_PLANO", false, false, int.MaxValue, int.MaxValue,
+                    fim, "TRIAL_EXPIRADO");
+        }
+
+        return new PlanoAcesso("SEM_PLANO", false, false, int.MaxValue, int.MaxValue,
             registro.DataFimAssinatura, registro.Status.ToString());
+    }
+
+    private static DateTime ComoUtc(DateTime data) => data.Kind switch
+    {
+        DateTimeKind.Utc => data,
+        DateTimeKind.Local => data.ToUniversalTime(),
+        // As datas legadas em PostgreSQL timestamp without time zone sao gravadas em UTC.
+        _ => DateTime.SpecifyKind(data, DateTimeKind.Utc)
+    };
     }
 
     private async Task VerificarPersistenciaAsync()
