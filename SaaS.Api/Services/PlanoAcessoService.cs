@@ -64,7 +64,6 @@ public sealed class PlanoAcessoService
         // As datas legadas em PostgreSQL timestamp without time zone sao gravadas em UTC.
         _ => DateTime.SpecifyKind(data, DateTimeKind.Utc)
     };
-    }
 
     private async Task VerificarPersistenciaAsync()
     {
