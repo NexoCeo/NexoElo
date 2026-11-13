@@ -36,14 +36,24 @@ namespace SaaS.Api.Controllers
         [HttpGet("empresas")]
         [AllowAnonymous]
         public async Task<IActionResult> ListarEmpresasPorCidade(
-            [FromQuery] int cidadeId)
+            [FromQuery] int? cidadeId)
         {
-            if (cidadeId <= 0)
+            // Sem cidade: pré-carregamento público de id/nome das empresas,
+            // independente de GPS ou papel selecionado.
+            if (!cidadeId.HasValue)
+            {
+                var todasEmpresas = await _profissionalRepository
+                    .ListarEmpresasDisponiveisParaCadastro();
+                return Ok(todasEmpresas);
+            }
+
+            // Mantém compatibilidade com consultas filtradas por cidade.
+            if (cidadeId.Value <= 0)
                 return BadRequest("Cidade inválida.");
-        
+
             var empresas = await _profissionalRepository
-                .ListarEmpresasPorCidade(cidadeId);
-        
+                .ListarEmpresasPorCidade(cidadeId.Value);
+
             return Ok(empresas);
         }
 
