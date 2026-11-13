@@ -8,5 +8,6 @@ namespace SaaS.Domain.Models
         public string Email { get; set; } = string.Empty;
         public string? Telefone { get; set; }
         public IFormFile? FotoPerfil { get; set; }
+        public IFormFile? FotoOriginal { get; set; }
     }
 }
