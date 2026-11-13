@@ -734,8 +734,10 @@ namespace SaaS.Infrastructure.Persistence.Repositories
 
         public string FormatarCNPJ(string cnpj)
         {
-            // Remove todos os caracteres não numéricos
-            cnpj = new string(cnpj.Where(char.IsDigit).ToArray());
+            // CNPJ numerico e alfanumerico: preserve letras (novos registros de 2026).
+            cnpj = new string(cnpj.ToUpperInvariant()
+                .Where(c => (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z'))
+                .ToArray());
 
             // Verifica se o CNPJ tem exatamente 14 caracteres
             if (cnpj.Length == 14)
