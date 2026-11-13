@@ -28,9 +28,12 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 A.DATA_FIM_ASSINATURA,
                 U.DATA_CRIACAO_USUARIO,
                 U.DATA_ALTERACAO_USUARIO,
-                U.CIDADE_FK
+                U.CIDADE_FK,
+                E.NOME_FANTASIA,
+                E.CNPJ_EMPRESA
             FROM USUARIOS U
-            LEFT JOIN ASSINATURAS A ON A.USUARIO_FK = U.ID_USUARIO";
+            LEFT JOIN ASSINATURAS A ON A.USUARIO_FK = U.ID_USUARIO
+            LEFT JOIN EMPRESAS E ON E.USUARIO_FK = U.ID_USUARIO";
 
         public UsuarioRepository(
             IConfiguration configuration,
@@ -745,23 +748,34 @@ namespace SaaS.Infrastructure.Persistence.Repositories
 
         private static UsuarioModel MapUsuario(NpgsqlDataReader reader)
         {
-            return new UsuarioModel
-            {
-                Id = reader.GetInt32(reader.GetOrdinal("ID_USUARIO")),
-                Nome = reader.GetString(reader.GetOrdinal("NOME_USUARIO")),
-                Email = reader.IsDBNull(reader.GetOrdinal("EMAIL_USUARIO")) ? null : reader.GetString(reader.GetOrdinal("EMAIL_USUARIO")),
-                Telefone = reader.IsDBNull(reader.GetOrdinal("TELEFONE_USUARIO")) ? null : reader.GetString(reader.GetOrdinal("TELEFONE_USUARIO")),
-                Slug = reader.IsDBNull(reader.GetOrdinal("SLUG_USUARIO")) ? null : reader.GetString(reader.GetOrdinal("SLUG_USUARIO")),
-                Senha = reader.GetString(reader.GetOrdinal("SENHA_USUARIO")),
-                FotoPerfil = reader.IsDBNull(reader.GetOrdinal("FOTO_PERFIL")) ? null : reader.GetString(reader.GetOrdinal("FOTO_PERFIL")),
-                TipoUsuario = TipoUsuarioExtensions.FromDatabaseValue(reader.GetString(reader.GetOrdinal("TIPO_USUARIO"))),
-                AssinaturaAtiva = StatusAssinaturaExtensions.FromDatabaseValue(reader.GetString(reader.GetOrdinal("ASSINATURA_ATIVA"))),
-                DataFimAssinatura = reader.IsDBNull(reader.GetOrdinal("DATA_FIM_ASSINATURA")) ? (DateTime?)null : reader.GetDateTime(reader.GetOrdinal("DATA_FIM_ASSINATURA")),
-                DataCriacao = reader.GetDateTime(reader.GetOrdinal("DATA_CRIACAO_USUARIO")),
-                DataAlteracao = reader.GetDateTime(reader.GetOrdinal("DATA_ALTERACAO_USUARIO")),
-                CidadeFk = reader.IsDBNull(reader.GetOrdinal("CIDADE_FK")) ? (int?)null : reader.GetInt32(reader.GetOrdinal("CIDADE_FK"))
-            };
+            var tipoUsuario = TipoUsuarioExtensions.FromDatabaseValue(reader.GetString(reader.GetOrdinal("TIPO_USUARIO")));
+            UsuarioModel usuario = tipoUsuario == TipoUsuario.EMPRESA
+                ? new EmpresaModel
+                {
+                    NomeFantasia = reader.IsDBNull(reader.GetOrdinal("NOME_FANTASIA"))
+                        ? null : reader.GetString(reader.GetOrdinal("NOME_FANTASIA")),
+                    Cnpj = reader.IsDBNull(reader.GetOrdinal("CNPJ_EMPRESA"))
+                        ? null : reader.GetString(reader.GetOrdinal("CNPJ_EMPRESA"))
+                }
+                : new UsuarioModel();
+
+            usuario.Id = reader.GetInt32(reader.GetOrdinal("ID_USUARIO"));
+            usuario.Nome = reader.GetString(reader.GetOrdinal("NOME_USUARIO"));
+            usuario.Email = reader.IsDBNull(reader.GetOrdinal("EMAIL_USUARIO")) ? null : reader.GetString(reader.GetOrdinal("EMAIL_USUARIO"));
+            usuario.Telefone = reader.IsDBNull(reader.GetOrdinal("TELEFONE_USUARIO")) ? null : reader.GetString(reader.GetOrdinal("TELEFONE_USUARIO"));
+            usuario.Slug = reader.IsDBNull(reader.GetOrdinal("SLUG_USUARIO")) ? null : reader.GetString(reader.GetOrdinal("SLUG_USUARIO"));
+            usuario.Senha = reader.GetString(reader.GetOrdinal("SENHA_USUARIO"));
+            usuario.FotoPerfil = reader.IsDBNull(reader.GetOrdinal("FOTO_PERFIL")) ? null : reader.GetString(reader.GetOrdinal("FOTO_PERFIL"));
+            usuario.TipoUsuario = tipoUsuario;
+            usuario.AssinaturaAtiva = StatusAssinaturaExtensions.FromDatabaseValue(reader.GetString(reader.GetOrdinal("ASSINATURA_ATIVA")));
+            usuario.DataFimAssinatura = reader.IsDBNull(reader.GetOrdinal("DATA_FIM_ASSINATURA")) ? (DateTime?)null : reader.GetDateTime(reader.GetOrdinal("DATA_FIM_ASSINATURA"));
+            usuario.DataCriacao = reader.GetDateTime(reader.GetOrdinal("DATA_CRIACAO_USUARIO"));
+            usuario.DataAlteracao = reader.GetDateTime(reader.GetOrdinal("DATA_ALTERACAO_USUARIO"));
+            usuario.CidadeFk = reader.IsDBNull(reader.GetOrdinal("CIDADE_FK")) ? (int?)null : reader.GetInt32(reader.GetOrdinal("CIDADE_FK"));
+            return usuario;
         }
+
+
 
         private static string? NormalizarEmail(string? email)
         {
