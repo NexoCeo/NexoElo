@@ -395,6 +395,121 @@ public class SecurityControllerTests
             ok.Value!.GetType().GetProperty("Nome")!.GetValue(ok.Value));
     }
 
+    [Theory]
+    [InlineData("27.019.954/0001-00")]
+    [InlineData("12.ABC.345/01DE-35")]
+    public async Task AtualizarPerfilDaEmpresaAceitaCnpjValido(string cnpj)
+    {
+        var repository = new Mock<IUsuarioRepository>();
+        repository.Setup(item => item.ListarUsuarioPorId(7)).ReturnsAsync(new EmpresaModel
+        {
+            Id = 7,
+            Nome = "Empresa",
+            Email = "empresa@mail.com",
+            Cnpj = "12.345.678/0001-95",
+            TipoUsuario = SaaS.Domain.Enums.TipoUsuario.EMPRESA
+        });
+        repository.Setup(item => item.AtualizarPerfilUsuario(
+            7, "Empresa", "empresa@mail.com", null, null, false, cnpj))
+            .ReturnsAsync(new EmpresaModel
+            {
+                Id = 7,
+                Nome = "EMPRESA",
+                Email = "EMPRESA@MAIL.COM",
+                Cnpj = cnpj,
+                TipoUsuario = SaaS.Domain.Enums.TipoUsuario.EMPRESA
+            });
+        var controller = new UsuarioController(
+            repository.Object,
+            Mock.Of<ILocalizacaoCadastroService>(),
+            Mock.Of<IEmailService>())
+        {
+            ControllerContext = CriarContexto(7, "EMPRESA")
+        };
+
+        var result = await controller.AtualizarPerfil(7, new UpdatePerfilModel
+        {
+            Nome = "Empresa",
+            Email = "empresa@mail.com",
+            Cnpj = cnpj
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(cnpj, ok.Value!.GetType().GetProperty("Cnpj")!.GetValue(ok.Value));
+        repository.Verify(item => item.AtualizarPerfilUsuario(
+            7, "Empresa", "empresa@mail.com", null, null, false, cnpj), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("11.111.111/1111-11")]
+    [InlineData("27.019.954/0001-99")]
+    [InlineData("12.ABC.345/01DE-99")]
+    [InlineData("12.345.678/0001")]
+    public async Task AtualizarPerfilDaEmpresaRejeitaCnpjInvalido(string cnpj)
+    {
+        var repository = new Mock<IUsuarioRepository>();
+        repository.Setup(item => item.ListarUsuarioPorId(7)).ReturnsAsync(new EmpresaModel
+        {
+            Id = 7,
+            Nome = "Empresa",
+            Email = "empresa@mail.com",
+            TipoUsuario = SaaS.Domain.Enums.TipoUsuario.EMPRESA
+        });
+        var controller = new UsuarioController(
+            repository.Object,
+            Mock.Of<ILocalizacaoCadastroService>(),
+            Mock.Of<IEmailService>())
+        {
+            ControllerContext = CriarContexto(7, "EMPRESA")
+        };
+
+        var result = await controller.AtualizarPerfil(7, new UpdatePerfilModel
+        {
+            Nome = "Empresa",
+            Email = "empresa@mail.com",
+            Cnpj = cnpj
+        });
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        repository.Verify(item => item.AtualizarPerfilUsuario(
+            It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+            It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AtualizarPerfilNaoPermiteCnpjParaProfissional()
+    {
+        var repository = new Mock<IUsuarioRepository>();
+        repository.Setup(item => item.ListarUsuarioPorId(7)).ReturnsAsync(new UsuarioModel
+        {
+            Id = 7,
+            Nome = "Profissional",
+            Email = "profissional@mail.com",
+            TipoUsuario = SaaS.Domain.Enums.TipoUsuario.PROFISSIONAL
+        });
+        var controller = new UsuarioController(
+            repository.Object,
+            Mock.Of<ILocalizacaoCadastroService>(),
+            Mock.Of<IEmailService>())
+        {
+            ControllerContext = CriarContexto(7, "PROFISSIONAL")
+        };
+
+        var result = await controller.AtualizarPerfil(7, new UpdatePerfilModel
+        {
+            Nome = "Profissional",
+            Email = "profissional@mail.com",
+            Cnpj = "27.019.954/0001-00"
+        });
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        repository.Verify(item => item.AtualizarPerfilUsuario(
+            It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+            It.IsAny<string>()), Times.Never);
+    }
+
     [Fact]
     public async Task AtualizarPerfilSubstituiFotoPersistida()
     {
