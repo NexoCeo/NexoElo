@@ -527,10 +527,33 @@ namespace SaaS.Api.Controllers
             }
         }
 
+        // Imagem de origem reservada ao titular do perfil, independente do papel.
+        [HttpGet("{id:int}/foto-original")]
+        [Authorize(Roles = "EMPRESA,AUTONOMO,PROFISSIONAL")]
+        public async Task<IActionResult> ObterFotoOriginalPropria(int id)
+        {
+            if (!User.EhProprioUsuario(id))
+                return Forbid();
+
+            var usuario = await _usuarioRepository.ListarUsuarioPorId(id);
+            if (usuario == null || string.IsNullOrWhiteSpace(usuario.FotoPerfil)
+                || _arquivoUploadService == null)
+                return NotFound();
+
+            var original = await _arquivoUploadService.ObterOriginalAsync(
+                usuario.FotoPerfil, HttpContext.RequestAborted);
+            if (original == null)
+                return NotFound();
+
+            Response.Headers.CacheControl = "no-store";
+            return File(original.Conteudo, original.TipoConteudo);
+        }
+
         [HttpPut("{id:int}/perfil")]
         [HttpPatch("{id:int}/perfil")]
         [Consumes("multipart/form-data")]
         [Authorize(Roles = "EMPRESA,AUTONOMO,PROFISSIONAL")]
+        [RequestSizeLimit(26 * 1024 * 1024)]
         public async Task<IActionResult> AtualizarPerfil(int id, [FromForm] UpdatePerfilModel request)
         {
             if (!User.EhProprioUsuario(id))
