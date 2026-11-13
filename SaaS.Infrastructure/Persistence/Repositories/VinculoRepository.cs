@@ -310,7 +310,13 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             return result?.ToString();
         }
         
-        public async Task<IEnumerable<SolicitacaoVinculoModel>> ListarSolicitacoesPendentesPorEmpresa(int empresaId)
+        public Task<IEnumerable<SolicitacaoVinculoModel>> ListarSolicitacoesPendentesPorEmpresa(int empresaId) =>
+            ListarSolicitacoesEmpresa(empresaId, historico: false);
+
+        public Task<IEnumerable<SolicitacaoVinculoModel>> ListarHistoricoSolicitacoesPorEmpresa(int empresaId) =>
+            ListarSolicitacoesEmpresa(empresaId, historico: true);
+
+        private async Task<IEnumerable<SolicitacaoVinculoModel>> ListarSolicitacoesEmpresa(int empresaId, bool historico)
         {
             await using var connection =
                 new NpgsqlConnection(_connectionString);
@@ -330,7 +336,10 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 INNER JOIN USUARIOS U
                     ON U.ID_USUARIO = V.PROFISSIONAL_FK
                 WHERE V.EMPRESA_FK = @EmpresaId
-                  AND V.STATUS_SOLICITACAO = 'PENDENTE'
+                  AND (
+                      (@Historico = FALSE AND V.STATUS_SOLICITACAO = 'PENDENTE')
+                      OR (@Historico = TRUE AND V.STATUS_SOLICITACAO IN ('APROVADO', 'RECUSADO'))
+                  )
                   AND U.TIPO_USUARIO = 'PROFISSIONAL'
                 ORDER BY
                     V.DATA_SOLICITACAO DESC,
@@ -345,6 +354,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 empresaId
             );
         
+            command.Parameters.AddWithValue("@Historico", historico);
+
             var solicitacoes =
                 new List<SolicitacaoVinculoModel>();
         
