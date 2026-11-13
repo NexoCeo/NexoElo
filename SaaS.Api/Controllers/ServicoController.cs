@@ -66,6 +66,7 @@ namespace SaaS.Api.Controllers
         [HttpPost("InserirServiçoComImagem")]
         [Consumes("multipart/form-data")]
         [Authorize(Roles = "EMPRESA,AUTONOMO")]
+        [RequestSizeLimit(26 * 1024 * 1024)]
         public async Task<IActionResult> InserirServicoComImagem([FromForm] CreateServicoModel request)
         {
             if (!User.TryGetUsuarioId(out var usuarioId))
@@ -100,7 +101,7 @@ namespace SaaS.Api.Controllers
                     return BadRequest("A imagem do servico deve ser JPG, PNG ou WEBP e ter no maximo 5 MB.");
                 }
 
-                caminhoImagem = await SalvarImagemServico(request.ImagemServico);
+                caminhoImagem = await SalvarImagemComOriginalAsync(request.ImagemServico, request.ImagemOriginal);
             }
 
             var servico = new ServicoModel
@@ -135,6 +136,7 @@ namespace SaaS.Api.Controllers
         [HttpPatch("{id:int}")]
         [Consumes("multipart/form-data")]
         [Authorize(Roles = "EMPRESA,AUTONOMO")]
+        [RequestSizeLimit(26 * 1024 * 1024)]
         public async Task<IActionResult> AtualizarServico(int id, [FromForm] UpdateServicoModel request)
         {
             if (!User.TryGetUsuarioId(out var usuarioId))
@@ -152,7 +154,7 @@ namespace SaaS.Api.Controllers
                 if (servicoAtual == null)
                     return NotFound("Servico nao encontrado.");
 
-                caminhoImagem = await SalvarImagemServico(request.ImagemServico);
+                caminhoImagem = await SalvarImagemComOriginalAsync(request.ImagemServico, request.ImagemOriginal);
                 var atualizarImagem = caminhoImagem != null;
                 var servico = new ServicoModel
                 {
@@ -192,6 +194,28 @@ namespace SaaS.Api.Controllers
                 await RemoverImagem(caminhoImagem);
                 throw;
             }
+        }
+
+        [HttpGet("{id:int}/imagem-original")]
+        [Authorize(Roles = "EMPRESA,AUTONOMO")]
+        public async Task<IActionResult> ObterImagemOriginalServico(int id)
+        {
+            if (!User.TryGetUsuarioId(out var usuarioId))
+                return Forbid();
+
+            var servicos = await _servicoRepository.ListarServicos(usuarioId);
+            var servico = servicos.FirstOrDefault(item => item.Id == id);
+            if (servico == null || string.IsNullOrWhiteSpace(servico.ImagemServico)
+                || _arquivoUploadService == null)
+                return NotFound();
+
+            var original = await _arquivoUploadService.ObterOriginalAsync(
+                servico.ImagemServico, HttpContext.RequestAborted);
+            if (original == null)
+                return NotFound();
+
+            Response.Headers.CacheControl = "no-store";
+            return File(original.Conteudo, original.TipoConteudo);
         }
 
         [HttpGet("ListarServicosPorEmpresa")]
@@ -235,12 +259,36 @@ namespace SaaS.Api.Controllers
                 System.IO.File.Delete(caminhoCompleto);
         }
 
-        private async Task<string?> SalvarImagemServico(IFormFile? imagemServico)
+        private async Task<string?> SalvarImagemComOriginalAsync(IFormFile? editada, IFormFile? original)
+        {
+            string? caminhoEditado = null;
+            string? caminhoOriginal = null;
+            try
+            {
+                caminhoEditado = await SalvarImagemServico(editada);
+                if (caminhoEditado != null && original is { Length: > 0 })
+                {
+                    caminhoOriginal = await SalvarImagemServico(original, 20 * 1024 * 1024);
+                    if (caminhoOriginal != null && _arquivoUploadService != null)
+                        await _arquivoUploadService.VincularOriginalAsync(
+                            caminhoEditado, caminhoOriginal, HttpContext.RequestAborted);
+                }
+
+                return caminhoEditado;
+            }
+            catch
+            {
+                await RemoverImagem(caminhoEditado);
+                await RemoverImagem(caminhoOriginal);
+                throw;
+            }
+        }
+
+        private async Task<string?> SalvarImagemServico(IFormFile? imagemServico, long tamanhoMaximo = 5 * 1024 * 1024)
         {
             if (imagemServico is not { Length: > 0 })
                 return null;
 
-            const long tamanhoMaximo = 5 * 1024 * 1024;
             var extensao = Path.GetExtension(imagemServico.FileName).ToLowerInvariant();
             var extensoesPermitidas = new HashSet<string> { ".jpg", ".jpeg", ".png", ".webp" };
             var tiposPermitidos = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -254,7 +302,7 @@ namespace SaaS.Api.Controllers
                 !await ArquivoImagemValido(imagemServico, extensao))
             {
                 throw new ArgumentException(
-                    "A imagem do servico deve ser JPG, PNG ou WEBP e ter no maximo 5 MB.");
+                    $"A imagem do servico deve ser JPG, PNG ou WEBP e ter no maximo {tamanhoMaximo / (1024 * 1024)} MB.");
             }
 
             if (_arquivoUploadService == null)
