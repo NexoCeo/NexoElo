@@ -33,6 +33,10 @@ public sealed class PostgresArquivoUploadService : IArquivoUploadService
                 CONTEUDO BYTEA NOT NULL,
                 DATA_CRIACAO TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS IMAGENS_UPLOAD_ORIGINAIS (
+                CAMINHO_EDITADO VARCHAR(255) PRIMARY KEY,
+                CAMINHO_ORIGINAL VARCHAR(255) NOT NULL
+            );
             """;
 
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -73,6 +77,49 @@ public sealed class PostgresArquivoUploadService : IArquivoUploadService
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return caminho;
+    }
+
+    public async Task VincularOriginalAsync(
+        string caminhoEditado,
+        string caminhoOriginal,
+        CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            INSERT INTO IMAGENS_UPLOAD_ORIGINAIS (CAMINHO_EDITADO, CAMINHO_ORIGINAL)
+            VALUES (@Editado, @Original)
+            ON CONFLICT (CAMINHO_EDITADO)
+            DO UPDATE SET CAMINHO_ORIGINAL = EXCLUDED.CAMINHO_ORIGINAL;
+            """;
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@Editado", NormalizarCaminho(caminhoEditado));
+        command.Parameters.AddWithValue("@Original", NormalizarCaminho(caminhoOriginal));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<ArquivoUploadModel?> ObterOriginalAsync(
+        string caminhoEditado,
+        CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            SELECT CAMINHO_ORIGINAL FROM IMAGENS_UPLOAD_ORIGINAIS
+            WHERE CAMINHO_EDITADO = @Editado;
+            """;
+
+        string? caminhoOriginal;
+        await using (var connection = new NpgsqlConnection(_connectionString))
+        {
+            await connection.OpenAsync(cancellationToken);
+            await using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@Editado", NormalizarCaminho(caminhoEditado));
+            caminhoOriginal = (string?)await command.ExecuteScalarAsync(cancellationToken);
+        }
+
+        return caminhoOriginal == null
+            ? null
+            : await ObterAsync(caminhoOriginal, cancellationToken);
     }
 
     public async Task<ArquivoUploadModel?> ObterAsync(
@@ -124,9 +171,16 @@ public sealed class PostgresArquivoUploadService : IArquivoUploadService
             return;
         }
 
+        // Remover o recorte tambem elimina sua fonte original armazenada.
         const string sql = """
+            WITH originais AS (
+                DELETE FROM IMAGENS_UPLOAD_ORIGINAIS
+                WHERE CAMINHO_EDITADO = @Caminho
+                RETURNING CAMINHO_ORIGINAL
+            )
             DELETE FROM ARQUIVOS_UPLOAD
-            WHERE CAMINHO_ARQUIVO = @Caminho;
+            WHERE CAMINHO_ARQUIVO = @Caminho
+               OR CAMINHO_ARQUIVO IN (SELECT CAMINHO_ORIGINAL FROM originais);
             """;
 
         await using var connection = new NpgsqlConnection(_connectionString);
