@@ -21,8 +21,15 @@ namespace SaaS.Application.Interfaces.Repositories
             string email,
             string? telefone,
             string? fotoPerfil,
+            bool atualizarFoto);
+        Task<UsuarioModel?> AtualizarPerfilUsuario(
+            int usuarioId,
+            string nome,
+            string email,
+            string? telefone,
+            string? fotoPerfil,
             bool atualizarFoto,
-            string? cnpj = null);
+            string cnpj);
         Task AtualizarSenhaHash(int usuarioId, string senhaHash);
         Task<UsuarioModel?> ListarUsuarioPorLogin(string login);
         Task<UsuarioModel?> ListarUsuarioPorEmail(string email);
