@@ -12,6 +12,7 @@ namespace SaaS.Domain.Models
         public string? Slug { get; set; }
         public string? Senha { get; set; }
         public IFormFile FotoPerfil { get; set; }
+        public IFormFile? FotoOriginal { get; set; }
         public TipoUsuario? TipoUsuario { get; set; }
         public StatusAssinatura? AssinaturaAtiva { get; set; }
         public DateTime? DataFimAssinatura { get; set; }
