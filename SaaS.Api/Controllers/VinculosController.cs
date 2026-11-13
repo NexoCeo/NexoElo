@@ -53,6 +53,17 @@ namespace SaaS.Api.Controllers
             return Ok(solicitacoes);
         }
 
+        [HttpGet("empresa/{empresaId:int}/solicitacoes/historico")]
+        [Authorize(Roles = "EMPRESA")]
+        public async Task<IActionResult> ListarHistoricoSolicitacoes(int empresaId)
+        {
+            if (!User.EhProprioUsuario(empresaId))
+                return Forbid();
+
+            var solicitacoes = await _vinculoRepository.ListarHistoricoSolicitacoesPorEmpresa(empresaId);
+            return Ok(solicitacoes);
+        }
+
         [HttpPatch("empresa/{empresaId:int}/solicitacoes/{solicitacaoId:int}")]
         [Authorize(Roles = "EMPRESA")]
         public async Task<IActionResult> ResponderSolicitacao(
