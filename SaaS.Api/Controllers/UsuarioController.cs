@@ -594,14 +594,11 @@ namespace SaaS.Api.Controllers
 
                 caminhoFoto = await SalvarFotoComOriginalAsync(request.FotoPerfil, request.FotoOriginal);
                 var atualizarFoto = caminhoFoto != null;
-                var atualizado = await _usuarioRepository.AtualizarPerfilUsuario(
-                    id,
-                    request.Nome,
-                    request.Email,
-                    request.Telefone,
-                    caminhoFoto,
-                    atualizarFoto,
-                    request.Cnpj);
+                var atualizado = request.Cnpj is null
+                    ? await _usuarioRepository.AtualizarPerfilUsuario(
+                        id, request.Nome, request.Email, request.Telefone, caminhoFoto, atualizarFoto)
+                    : await _usuarioRepository.AtualizarPerfilUsuario(
+                        id, request.Nome, request.Email, request.Telefone, caminhoFoto, atualizarFoto, request.Cnpj);
 
                 if (atualizado == null)
                 {
