@@ -613,14 +613,33 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             return rowsAffected > 0;
         }
 
-        public async Task<UsuarioModel?> AtualizarPerfilUsuario(
+        public Task<UsuarioModel?> AtualizarPerfilUsuario(
+            int usuarioId,
+            string nome,
+            string email,
+            string? telefone,
+            string? fotoPerfil,
+            bool atualizarFoto) =>
+            AtualizarPerfilUsuarioInterno(usuarioId, nome, email, telefone, fotoPerfil, atualizarFoto, null);
+
+        public Task<UsuarioModel?> AtualizarPerfilUsuario(
             int usuarioId,
             string nome,
             string email,
             string? telefone,
             string? fotoPerfil,
             bool atualizarFoto,
-            string? cnpj = null)
+            string cnpj) =>
+            AtualizarPerfilUsuarioInterno(usuarioId, nome, email, telefone, fotoPerfil, atualizarFoto, cnpj);
+
+        private async Task<UsuarioModel?> AtualizarPerfilUsuarioInterno(
+            int usuarioId,
+            string nome,
+            string email,
+            string? telefone,
+            string? fotoPerfil,
+            bool atualizarFoto,
+            string? cnpj)
         {
             if (usuarioId <= 0)
                 throw new ArgumentException("Usuario invalido.");
