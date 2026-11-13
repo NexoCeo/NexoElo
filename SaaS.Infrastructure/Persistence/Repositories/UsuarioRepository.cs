@@ -619,7 +619,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             string email,
             string? telefone,
             string? fotoPerfil,
-            bool atualizarFoto)
+            bool atualizarFoto,
+            string? cnpj = null)
         {
             if (usuarioId <= 0)
                 throw new ArgumentException("Usuario invalido.");
@@ -666,15 +667,21 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     return null;
                 }
 
+                // Nome fantasia acompanha o nome do perfil, como no fluxo existente.
+                // CNPJ só é alterado quando informado explicitamente pelo titular da empresa.
                 await using (var empresaCommand = new NpgsqlCommand(@"
                     UPDATE EMPRESAS E
-                    SET NOME_FANTASIA = @Nome
+                    SET NOME_FANTASIA = @Nome,
+                        CNPJ_EMPRESA = CASE WHEN @AtualizarCnpj THEN @Cnpj ELSE E.CNPJ_EMPRESA END
                     FROM USUARIOS U
                     WHERE E.USUARIO_FK = U.ID_USUARIO
                       AND U.ID_USUARIO = @UsuarioId
                       AND U.TIPO_USUARIO = 'EMPRESA'", connection, transaction))
                 {
                     empresaCommand.Parameters.AddWithValue("@Nome", nomeNormalizado);
+                    empresaCommand.Parameters.AddWithValue("@AtualizarCnpj", cnpj is not null);
+                    empresaCommand.Parameters.AddWithValue("@Cnpj",
+                        (object?)(cnpj is not null ? FormatarCNPJ(cnpj) : null) ?? DBNull.Value);
                     empresaCommand.Parameters.AddWithValue("@UsuarioId", usuarioId);
                     await empresaCommand.ExecuteNonQueryAsync();
                 }
