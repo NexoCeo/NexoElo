@@ -182,6 +182,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 agendamento.Taxa = 0;
                 agendamento.Valor = servico.Valor;
                 agendamento.ValorServico = servico.Valor;
+                agendamento.DuracaoMinutos = servico.DuracaoMinutos;
 
                 await using var insertCmd = new NpgsqlCommand(@"
                     INSERT INTO AGENDAMENTOS
