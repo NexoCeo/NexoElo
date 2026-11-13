@@ -54,6 +54,42 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             }
         }
 
+        // Lista reduzida (id/nome) para cadastro público: não depende da
+        // localização do navegador e pode ser pré-carregada na abertura da página.
+        public async Task<IEnumerable<EmpresaCidadeModel>> ListarEmpresasDisponiveisParaCadastro()
+        {
+            const string sql = @"
+                SELECT
+                    U.ID_USUARIO,
+                    COALESCE(
+                        NULLIF(TRIM(E.NOME_FANTASIA), ''),
+                        U.NOME_USUARIO
+                    ) AS NOME
+                FROM USUARIOS U
+                LEFT JOIN EMPRESAS E ON E.USUARIO_FK = U.ID_USUARIO
+                WHERE U.TIPO_USUARIO = @TipoUsuario
+                ORDER BY NOME, U.ID_USUARIO;
+            ";
+
+            var empresas = new List<EmpresaCidadeModel>();
+            await using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@TipoUsuario", TipoUsuario.EMPRESA.ToDatabaseValue());
+            await using var reader = await command.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                empresas.Add(new EmpresaCidadeModel
+                {
+                    IdUsuario = reader.GetInt32(reader.GetOrdinal("ID_USUARIO")),
+                    Nome = reader.GetString(reader.GetOrdinal("NOME"))
+                });
+            }
+
+            return empresas;
+        }
+
         public async Task<IEnumerable<EmpresaCidadeModel>> ListarEmpresasPorCidade(int cidadeId)
         {
             var empresas = new List<EmpresaCidadeModel>();
