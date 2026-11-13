@@ -14,6 +14,61 @@ namespace SaaS.Api.Tests;
 public class SecurityControllerTests
 {
     [Fact]
+    public async Task HistoricoSolicitacoesRetornaSomenteDadosDaEmpresaAutenticada()
+    {
+        var repository = new Mock<IVinculoRepository>();
+        var historico = new List<SolicitacaoVinculoModel>
+        {
+            new()
+            {
+                Id = 19,
+                ProfissionalId = 33,
+                ProfissionalNome = "FELIPE COSTA",
+                VinculoStatus = "APROVADO",
+                DataSolicitacao = new DateTime(2026, 11, 12)
+            },
+            new()
+            {
+                Id = 20,
+                ProfissionalId = 34,
+                ProfissionalNome = "Maria Silva",
+                VinculoStatus = "RECUSADO",
+                DataSolicitacao = new DateTime(2026, 11, 11)
+            }
+        };
+
+        repository.Setup(item => item.ListarHistoricoSolicitacoesPorEmpresa(7))
+            .ReturnsAsync(historico);
+
+        var controller = new VinculosController(repository.Object)
+        {
+            ControllerContext = CriarContexto(7, "EMPRESA")
+        };
+
+        var result = await controller.ListarHistoricoSolicitacoes(7);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Same(historico, ok.Value);
+        repository.Verify(item => item.ListarHistoricoSolicitacoesPorEmpresa(7), Times.Once);
+        repository.Verify(item => item.ListarSolicitacoesPendentesPorEmpresa(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HistoricoSolicitacoesImpedeConsultaPorOutraEmpresa()
+    {
+        var repository = new Mock<IVinculoRepository>();
+        var controller = new VinculosController(repository.Object)
+        {
+            ControllerContext = CriarContexto(8, "EMPRESA")
+        };
+
+        var result = await controller.ListarHistoricoSolicitacoes(7);
+
+        Assert.IsType<ForbidResult>(result);
+        repository.Verify(item => item.ListarHistoricoSolicitacoesPorEmpresa(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
     public async Task VincularServicosRejeitaOutraEmpresa()
     {
         var repository = new Mock<IVinculoRepository>();
