@@ -436,6 +436,71 @@ namespace SaaS.Api.Controllers
             }
         }
 
+        // Edicao pela empresa com foto opcional: preserva o endpoint JSON ja utilizado.
+        [HttpPut("empresa/profissionais/{id:int}/com-foto")]
+        [Consumes("multipart/form-data")]
+        [Authorize(Roles = "EMPRESA")]
+        [RequestSizeLimit(6 * 1024 * 1024)]
+        public async Task<IActionResult> EditarProfissionalEmpresaComFoto(int id, [FromForm] UpdatePerfilModel request)
+        {
+            if (!User.TryGetUsuarioId(out var empresaId))
+                return Forbid();
+
+            if (request == null || string.IsNullOrWhiteSpace(request.Nome) ||
+                string.IsNullOrWhiteSpace(request.Email) || !MailAddress.TryCreate(request.Email.Trim(), out _))
+                return BadRequest(new { erro = "Informe nome e email validos." });
+
+            if (!string.IsNullOrWhiteSpace(request.Telefone))
+            {
+                var digits = new string(request.Telefone.Where(char.IsDigit).ToArray());
+                if (digits.Length is < 10 or > 11)
+                    return BadRequest(new { erro = "Informe um telefone valido com DDD." });
+            }
+
+            var vinculo = await _usuarioRepository.ObterStatusVinculoProfissionalEmpresa(id, empresaId);
+            if (!string.Equals(vinculo, "APROVADO", StringComparison.OrdinalIgnoreCase))
+                return Forbid();
+
+            string? caminhoFoto = null;
+            try
+            {
+                var usuarioAtual = await _usuarioRepository.ListarUsuarioPorId(id);
+                if (usuarioAtual == null)
+                    return NotFound("Profissional nao encontrado.");
+
+                caminhoFoto = await SalvarFotoPerfil(request.FotoPerfil);
+                var atualizarFoto = caminhoFoto != null;
+                var atualizado = await _usuarioRepository.AtualizarPerfilUsuario(
+                    id,
+                    request.Nome.Trim(),
+                    request.Email.Trim(),
+                    request.Telefone,
+                    caminhoFoto,
+                    atualizarFoto);
+
+                if (atualizado == null)
+                {
+                    await RemoverFoto(caminhoFoto);
+                    return NotFound("Profissional nao encontrado.");
+                }
+
+                if (atualizarFoto)
+                    await RemoverFoto(usuarioAtual.FotoPerfil);
+
+                return Ok(CriarRespostaUsuario(atualizado));
+            }
+            catch (ArgumentException ex)
+            {
+                await RemoverFoto(caminhoFoto);
+                return BadRequest(new { erro = ex.Message });
+            }
+            catch
+            {
+                await RemoverFoto(caminhoFoto);
+                throw;
+            }
+        }
+
         [HttpPut("{id:int}/perfil")]
         [HttpPatch("{id:int}/perfil")]
         [Consumes("multipart/form-data")]
