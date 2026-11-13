@@ -627,6 +627,8 @@ namespace SaaS.Api.Controllers
                 usuario.Slug,
                 usuario.FotoPerfil,
                 usuario.TipoUsuario,
+                NomeFantasia = (usuario as EmpresaModel)?.NomeFantasia,
+                Cnpj = (usuario as EmpresaModel)?.Cnpj,
                 usuario.AssinaturaAtiva,
                 usuario.DataFimAssinatura,
                 usuario.CidadeFk,
