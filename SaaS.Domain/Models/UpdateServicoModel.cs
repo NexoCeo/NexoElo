@@ -8,5 +8,6 @@ namespace SaaS.Domain.Models
         public decimal Valor { get; set; }
         public int TempoEstimadoMinutos { get; set; }
         public IFormFile? ImagemServico { get; set; }
+        public IFormFile? ImagemOriginal { get; set; }
     }
 }
