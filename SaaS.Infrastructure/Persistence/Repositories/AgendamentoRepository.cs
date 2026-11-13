@@ -347,6 +347,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
                 S.VALOR_SERVICO,
+                S.TEMPO_ESTIMADO_MINUTOS AS DURACAO_MINUTOS,
                 S.NOME_SERVICO,
                 S.USUARIO_FK AS RESPONSAVEL_FK,
                 PU.TIPO_USUARIO,
@@ -411,6 +412,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
                     S.VALOR_SERVICO,
+                    S.TEMPO_ESTIMADO_MINUTOS AS DURACAO_MINUTOS,
                     S.NOME_SERVICO,
                     S.USUARIO_FK AS RESPONSAVEL_FK,
                     PU.TIPO_USUARIO,
@@ -473,6 +475,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
                 S.VALOR_SERVICO,
+                S.TEMPO_ESTIMADO_MINUTOS AS DURACAO_MINUTOS,
                 S.NOME_SERVICO,
                 S.USUARIO_FK AS RESPONSAVEL_FK,
                 PU.TIPO_USUARIO,
@@ -578,6 +581,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
                         S.VALOR_SERVICO,
+                        S.TEMPO_ESTIMADO_MINUTOS AS DURACAO_MINUTOS,
                         S.NOME_SERVICO,
                         S.USUARIO_FK AS RESPONSAVEL_FK,
                         PU.TIPO_USUARIO,
@@ -625,6 +629,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                             ? string.Empty
                             : reader.GetString(clienteNomeOrdinal),
                         ServicoNome = reader.GetString(reader.GetOrdinal("NOME_SERVICO")),
+                        DuracaoMinutos = reader.GetInt32(reader.GetOrdinal("DURACAO_MINUTOS")),
                         ProfissionalNome = reader.GetString(reader.GetOrdinal("PROFISSIONAL_NOME"))
                     };
                 }
@@ -759,6 +764,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         ? string.Empty
                         : reader.GetString(clienteNomeOrdinal),
                     ServicoNome = reader.GetString(reader.GetOrdinal("NOME_SERVICO")),
+                    DuracaoMinutos = reader.GetInt32(reader.GetOrdinal("DURACAO_MINUTOS")),
                     ProfissionalNome = reader.GetString(reader.GetOrdinal("PROFISSIONAL_NOME"))
                 });
             }
