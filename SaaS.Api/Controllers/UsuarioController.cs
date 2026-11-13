@@ -583,6 +583,15 @@ namespace SaaS.Api.Controllers
                 if (usuarioAtual == null)
                     return NotFound("Usuario nao encontrado.");
 
+                if (request.Cnpj is not null)
+                {
+                    if (usuarioAtual.TipoUsuario != TipoUsuario.EMPRESA)
+                        return BadRequest("Somente contas de empresa podem alterar o CNPJ.");
+
+                    if (!CnpjValido(request.Cnpj))
+                        return BadRequest("Informe um CNPJ valido, numerico ou alfanumerico.");
+                }
+
                 caminhoFoto = await SalvarFotoComOriginalAsync(request.FotoPerfil, request.FotoOriginal);
                 var atualizarFoto = caminhoFoto != null;
                 var atualizado = await _usuarioRepository.AtualizarPerfilUsuario(
@@ -591,7 +600,8 @@ namespace SaaS.Api.Controllers
                     request.Email,
                     request.Telefone,
                     caminhoFoto,
-                    atualizarFoto);
+                    atualizarFoto,
+                    request.Cnpj);
 
                 if (atualizado == null)
                 {
@@ -614,6 +624,37 @@ namespace SaaS.Api.Controllers
                 await RemoverFoto(caminhoFoto);
                 throw;
             }
+        }
+
+        // Modelo numerico e novo formato alfanumerico: ASCII - 48 e modulo 11.
+        private static bool CnpjValido(string valor)
+        {
+            var texto = valor.Trim().ToUpperInvariant();
+            if (texto.Any(c => !(c >= '0' && c <= '9') &&
+                               !(c >= 'A' && c <= 'Z') &&
+                               c != '.' && c != '/' && c != '-' && c != ' '))
+                return false;
+
+            var cnpj = new string(texto.Where(c => c != '.' && c != '/' && c != '-' && c != ' ').ToArray());
+            if (cnpj.Length != 14 ||
+                cnpj.Take(12).Any(c => !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z'))) ||
+                cnpj.Skip(12).Any(c => c < '0' || c > '9') ||
+                cnpj.Take(12).All(c => c == cnpj[0]))
+                return false;
+
+            static int Digito(string caracteres, int[] pesos)
+            {
+                var soma = pesos.Select((peso, indice) =>
+                    (caracteres[indice] - 48) * peso).Sum();
+                var resto = soma % 11;
+                return resto < 2 ? 0 : 11 - resto;
+            }
+
+            var pesosPrimeiro = new[] { 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2 };
+            var pesosSegundo = new[] { 6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2 };
+
+            return cnpj[12] - '0' == Digito(cnpj, pesosPrimeiro) &&
+                   cnpj[13] - '0' == Digito(cnpj, pesosSegundo);
         }
 
         private static object CriarRespostaUsuario(UsuarioModel usuario)
