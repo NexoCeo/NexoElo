@@ -16,6 +16,7 @@ namespace SaaS.Application.Interfaces.Repositories
         Task<string?> ObterStatusSolicitacaoPorProfissionalAsync(int profissionalId);
         Task<IEnumerable<SolicitacaoVinculoModel>> ListarSolicitacoesPendentesPorEmpresa(
         int empresaId);
+        Task<IEnumerable<SolicitacaoVinculoModel>> ListarHistoricoSolicitacoesPorEmpresa(int empresaId);
 
         Task<bool> PossuiVinculoAprovadoAsync(int profissionalId);
 
