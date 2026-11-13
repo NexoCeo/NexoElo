@@ -12,6 +12,15 @@ public interface IArquivoUploadService
         string tipoConteudo,
         CancellationToken cancellationToken = default);
 
+    Task VincularOriginalAsync(
+        string caminhoEditado,
+        string caminhoOriginal,
+        CancellationToken cancellationToken = default);
+
+    Task<ArquivoUploadModel?> ObterOriginalAsync(
+        string caminhoEditado,
+        CancellationToken cancellationToken = default);
+
     Task<ArquivoUploadModel?> ObterAsync(
         string caminho,
         CancellationToken cancellationToken = default);
