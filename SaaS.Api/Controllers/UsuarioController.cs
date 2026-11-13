@@ -46,7 +46,7 @@ namespace SaaS.Api.Controllers
         [HttpPost("InserirProfissionalEmpresa")]
         [AllowAnonymous]
         [EnableRateLimiting("registration")]
-        [RequestSizeLimit(6 * 1024 * 1024)]
+        [RequestSizeLimit(26 * 1024 * 1024)]
         public async Task<IActionResult> InserirUsuario([FromForm] CreateUsuarioModel createUsuario)
         {
             if (createUsuario == null)
@@ -207,7 +207,7 @@ namespace SaaS.Api.Controllers
 
                 if (createUsuario.FotoPerfil != null && createUsuario.FotoPerfil.Length > 0)
                 {
-                    caminhoFoto = await SalvarFotoPerfil(createUsuario.FotoPerfil);
+                    caminhoFoto = await SalvarFotoComOriginalAsync(createUsuario.FotoPerfil, createUsuario.FotoOriginal);
                 }
 
                 var novoUsuario = tipoUsuario == TipoUsuario.EMPRESA
@@ -437,10 +437,36 @@ namespace SaaS.Api.Controllers
         }
 
         // Edicao pela empresa com foto opcional: preserva o endpoint JSON ja utilizado.
+        // A imagem integral e privada: somente a empresa com vinculo aprovado pode acessa-la.
+        [HttpGet("empresa/profissionais/{id:int}/foto-original")]
+        [Authorize(Roles = "EMPRESA")]
+        public async Task<IActionResult> ObterFotoOriginalProfissional(int id)
+        {
+            if (!User.TryGetUsuarioId(out var empresaId))
+                return Forbid();
+
+            var vinculo = await _usuarioRepository.ObterStatusVinculoProfissionalEmpresa(id, empresaId);
+            if (!string.Equals(vinculo, "APROVADO", StringComparison.OrdinalIgnoreCase))
+                return Forbid();
+
+            var profissional = await _usuarioRepository.ListarUsuarioPorId(id);
+            if (profissional == null || string.IsNullOrWhiteSpace(profissional.FotoPerfil)
+                || _arquivoUploadService == null)
+                return NotFound();
+
+            var original = await _arquivoUploadService.ObterOriginalAsync(
+                profissional.FotoPerfil, HttpContext.RequestAborted);
+            if (original == null)
+                return NotFound();
+
+            Response.Headers.CacheControl = "no-store";
+            return File(original.Conteudo, original.TipoConteudo);
+        }
+
         [HttpPut("empresa/profissionais/{id:int}/com-foto")]
         [Consumes("multipart/form-data")]
         [Authorize(Roles = "EMPRESA")]
-        [RequestSizeLimit(6 * 1024 * 1024)]
+        [RequestSizeLimit(26 * 1024 * 1024)]
         public async Task<IActionResult> EditarProfissionalEmpresaComFoto(int id, [FromForm] UpdatePerfilModel request)
         {
             if (!User.TryGetUsuarioId(out var empresaId))
@@ -468,7 +494,7 @@ namespace SaaS.Api.Controllers
                 if (usuarioAtual == null)
                     return NotFound("Profissional nao encontrado.");
 
-                caminhoFoto = await SalvarFotoPerfil(request.FotoPerfil);
+                caminhoFoto = await SalvarFotoComOriginalAsync(request.FotoPerfil, request.FotoOriginal);
                 var atualizarFoto = caminhoFoto != null;
                 var atualizado = await _usuarioRepository.AtualizarPerfilUsuario(
                     id,
@@ -534,7 +560,7 @@ namespace SaaS.Api.Controllers
                 if (usuarioAtual == null)
                     return NotFound("Usuario nao encontrado.");
 
-                caminhoFoto = await SalvarFotoPerfil(request.FotoPerfil);
+                caminhoFoto = await SalvarFotoComOriginalAsync(request.FotoPerfil, request.FotoOriginal);
                 var atualizarFoto = caminhoFoto != null;
                 var atualizado = await _usuarioRepository.AtualizarPerfilUsuario(
                     id,
@@ -632,12 +658,35 @@ namespace SaaS.Api.Controllers
             return new string(senha);
         }
 
-        private async Task<string?> SalvarFotoPerfil(IFormFile? fotoPerfil)
+        private async Task<string?> SalvarFotoComOriginalAsync(IFormFile? foto, IFormFile? original)
+        {
+            string? imagemEditada = null;
+            string? imagemOriginal = null;
+            try
+            {
+                imagemEditada = await SalvarFotoPerfil(foto);
+                if (imagemEditada != null && original is { Length: > 0 })
+                {
+                    imagemOriginal = await SalvarFotoPerfil(original, 20 * 1024 * 1024);
+                    if (imagemOriginal != null && _arquivoUploadService != null)
+                        await _arquivoUploadService.VincularOriginalAsync(
+                            imagemEditada, imagemOriginal, HttpContext.RequestAborted);
+                }
+                return imagemEditada;
+            }
+            catch
+            {
+                await RemoverFoto(imagemEditada);
+                await RemoverFoto(imagemOriginal);
+                throw;
+            }
+        }
+
+        private async Task<string?> SalvarFotoPerfil(IFormFile? fotoPerfil, long tamanhoMaximo = 5 * 1024 * 1024)
         {
             if (fotoPerfil is not { Length: > 0 })
                 return null;
 
-            const long tamanhoMaximo = 5 * 1024 * 1024;
             var extensao = Path.GetExtension(fotoPerfil.FileName).ToLowerInvariant();
             var extensoesPermitidas = new HashSet<string> { ".jpg", ".jpeg", ".png", ".webp" };
             var tiposPermitidos = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -651,7 +700,7 @@ namespace SaaS.Api.Controllers
                 !await ArquivoImagemValido(fotoPerfil, extensao))
             {
                 throw new ArgumentException(
-                    "A foto deve ser JPG, PNG ou WEBP e ter no maximo 5 MB.");
+                    $"A foto deve ser JPG, PNG ou WEBP e ter no maximo {tamanhoMaximo / (1024 * 1024)} MB.");
             }
 
             if (_arquivoUploadService == null)
