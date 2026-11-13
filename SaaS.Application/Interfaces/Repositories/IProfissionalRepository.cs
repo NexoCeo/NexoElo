@@ -6,6 +6,7 @@ namespace SaaS.Application.Interfaces.Repositories
     {
         Task<List<UsuarioModel>> ListarEmpresasMesmaCidade(int profissionalId);
         Task<IEnumerable<EmpresaCidadeModel>> ListarEmpresasPorCidade(int cidadeId);
+        Task<IEnumerable<EmpresaCidadeModel>> ListarEmpresasDisponiveisParaCadastro();
     }
 }
 
