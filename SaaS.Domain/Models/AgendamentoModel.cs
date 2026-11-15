@@ -10,6 +10,7 @@ namespace SaaS.Domain.Models
         public int? ProfissionalId { get; set; }
         public int? EmpresaId { get; set; }
         public int ServicoId { get; set; }
+        public List<int> ServicoIds { get; set; } = new();
         public DateTime DataAgendamento { get; set; }
         public decimal Valor { get; set; }
         public decimal Taxa { get; set; }
