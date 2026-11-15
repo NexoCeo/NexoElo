@@ -367,13 +367,32 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     var itens = await PrepararAtendimentos(connection, transaction, responsavelId, atendimentos);
                     var funcionamentoMultiplo = await ObterFuncionamentoResponsavel(connection, transaction, responsavelId);
                     var agora = ObterAgoraSaoPaulo();
+                    // Consulta a ocupacao de cada profissional apenas uma vez por dia.
+                    // As combinacoes sao avaliadas em memoria, sem 96 consultas por dia.
+                    var ocupacoes = new Dictionary<int, List<IntervaloOcupado>>();
+                    foreach (var profissional in itens.Select(item => item.ProfissionalId).Distinct())
+                        ocupacoes[profissional] = await ObterIntervalosOcupados(
+                            connection, transaction, profissional, dataLocal.AddDays(-1), dataLocal.AddDays(2));
                     var horariosCandidatos = new List<DateTime>();
                     if (dataLocal >= agora.Date)
                         for (var minutos = 0; minutos < 24 * 60; minutos += IntervaloSugestaoMinutos)
                         {
                             var candidato = dataLocal.AddMinutes(minutos);
                             if (candidato <= agora) continue;
-                            if (await SequenciaDisponivel(connection, transaction, responsavelId, itens, candidato, funcionamentoMultiplo))
+                            var inicioItem = candidato;
+                            var disponivel = true;
+                            foreach (var item in itens)
+                            {
+                                var fimItem = inicioItem.AddMinutes(item.Duracao);
+                                if (ObterIntervaloFuncionamento(funcionamentoMultiplo, inicioItem, item.Duracao) == null ||
+                                    ocupacoes[item.ProfissionalId].Any(ocupado => ocupado.Inicio < fimItem && ocupado.Fim > inicioItem))
+                                {
+                                    disponivel = false;
+                                    break;
+                                }
+                                inicioItem = fimItem;
+                            }
+                            if (disponivel)
                                 horariosCandidatos.Add(DateTime.SpecifyKind(candidato, DateTimeKind.Unspecified));
                         }
                     await transaction.CommitAsync();
