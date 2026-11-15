@@ -95,11 +95,17 @@ namespace SaaS.Api.Controllers
                     return BadRequest(new { erro = "Selecione um profissional vinculado a empresa." });
                 }
 
-                var servicoIds = criarAgendamento.ServicoIds is { Count: > 0 }
-                    ? criarAgendamento.ServicoIds
-                    : new List<int> { criarAgendamento.ServicoId };
-                if (servicoIds.Any(id => id <= 0) || servicoIds.Count != servicoIds.Distinct().Count() || servicoIds.Count > 12)
-                    return BadRequest(new { erro = "Selecione de 1 a 12 servicos distintos." });
+                var atendimentos = criarAgendamento.Atendimentos is { Count: > 0 }
+                    ? criarAgendamento.Atendimentos : null;
+                var servicoIds = atendimentos != null
+                    ? atendimentos.Select(item => item.ServicoId).ToList()
+                    : criarAgendamento.ServicoIds is { Count: > 0 }
+                        ? criarAgendamento.ServicoIds : new List<int> { criarAgendamento.ServicoId };
+                if (servicoIds.Count == 0 || servicoIds.Count > 12 ||
+                    servicoIds.Any(id => id <= 0) || servicoIds.Distinct().Count() != servicoIds.Count ||
+                    (atendimentos != null && (tipoUsuario != TipoUsuario.EMPRESA ||
+                        atendimentos.Any(item => item.ProfissionalId <= 0))))
+                    return BadRequest(new { erro = "Selecione de 1 a 12 servicos validos vinculados a empresa." });
 
                 if (_planos != null)
                 {
@@ -118,6 +124,8 @@ namespace SaaS.Api.Controllers
                     ClienteId = clienteId,
                     ServicoId = servicoIds[0],
                     ServicoIds = servicoIds,
+                    Atendimentos = atendimentos ?? new List<AtendimentoProfissionalModel>(),
+
                     DataAgendamento = criarAgendamento.DataAgendamento,
                     ProfissionalId = tipoUsuario == TipoUsuario.AUTONOMO
                         ? criarAgendamento.ResponsavelId
@@ -198,14 +206,33 @@ namespace SaaS.Api.Controllers
             [FromQuery] int? profissionalId,
             [FromQuery] int servicoId,
             [FromQuery] DateTime data,
-            [FromQuery] int[]? servicoIds = null)
+            [FromQuery] int[]? servicoIds = null,
+            [FromQuery] string? atendimentos = null)
         {
             if (responsavelId <= 0 || (servicoId <= 0 && (servicoIds == null || servicoIds.Length == 0)) || data == default)
                 return BadRequest(new { erro = "Responsavel, servico e data sao obrigatorios." });
 
             try
             {
-                var ids = servicoIds is { Length: > 0 } ? servicoIds : new[] { servicoId };
+                List<AtendimentoProfissionalModel>? selecao = null;
+                if (!string.IsNullOrWhiteSpace(atendimentos))
+                {
+                    try
+                    {
+                        selecao = System.Text.Json.JsonSerializer.Deserialize<List<AtendimentoProfissionalModel>>(
+                            atendimentos, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    }
+                    catch (System.Text.Json.JsonException)
+                    {
+                        return BadRequest(new { erro = "Selecao de profissionais invalida." });
+                    }
+                    if (selecao is not { Count: > 0 })
+                        return BadRequest(new { erro = "Selecao de profissionais invalida." });
+                }
+                var ids = selecao != null ? selecao.Select(item => item.ServicoId).ToArray() :
+                    servicoIds is { Length: > 0 } ? servicoIds : new[] { servicoId };
+                if (selecao != null && selecao.Any(item => item.ProfissionalId <= 0))
+                    return BadRequest(new { erro = "Profissional invalido." });
                 if (ids.Length > 12 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length)
                     return BadRequest(new { erro = "Selecione de 1 a 12 servicos distintos." });
                 if (_planos != null)
@@ -223,7 +250,8 @@ namespace SaaS.Api.Controllers
                     profissionalId,
                     ids[0],
                     data,
-                    ids);
+                    ids,
+                    selecao);
 
                 return Ok(horarios);
             }
