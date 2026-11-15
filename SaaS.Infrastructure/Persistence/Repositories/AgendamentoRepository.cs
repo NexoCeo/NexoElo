@@ -465,9 +465,18 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 A.ID_AGENDAMENTO,
                 A.CLIENTE_FK,
                 C.USUARIO_FK AS CLIENTE_USUARIO_FK,
-                A.PRESTADOR_FK,
+                COALESCE((
+                    SELECT APS.PROFISSIONAL_FK FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = COALESCE(@ProfissionalId, @UsuarioId)
+                    LIMIT 1
+                ), A.PRESTADOR_FK) AS PRESTADOR_FK,
                 A.SERVICO_FK,
-                A.DATA_AGENDAMENTO,
+                COALESCE((
+                    SELECT MIN(APS.INICIO_ATENDIMENTO) FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = COALESCE(@ProfissionalId, @UsuarioId)
+                ), A.DATA_AGENDAMENTO) AS DATA_AGENDAMENTO,
                 A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
                 COALESCE((
@@ -497,7 +506,12 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             LEFT JOIN USUARIOS CU
                 ON CU.ID_USUARIO = C.USUARIO_FK
             INNER JOIN USUARIOS PU
-                ON PU.ID_USUARIO = A.PRESTADOR_FK
+                ON PU.ID_USUARIO = COALESCE((
+                    SELECT APS.PROFISSIONAL_FK FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = COALESCE(@ProfissionalId, @UsuarioId)
+                    LIMIT 1
+                ), A.PRESTADOR_FK)
             WHERE (
                 A.PRESTADOR_FK = @UsuarioId
                 OR S.USUARIO_FK = @UsuarioId
@@ -535,12 +549,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     .Add("@Fim", NpgsqlDbType.Timestamp)
                     .Value = fim;
 
-                if (profissionalId.HasValue)
-                {
-                    command.Parameters.AddWithValue(
-                        "@ProfissionalId",
-                        profissionalId.Value);
-                }
+                command.Parameters.Add("@ProfissionalId", NpgsqlDbType.Integer).Value =
+                    (object?)profissionalId ?? DBNull.Value;
             });
         }
 
@@ -551,9 +561,18 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     A.ID_AGENDAMENTO,
                     A.CLIENTE_FK,
                     C.USUARIO_FK AS CLIENTE_USUARIO_FK,
-                    A.PRESTADOR_FK,
+                    COALESCE((
+                    SELECT APS.PROFISSIONAL_FK FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = @UsuarioId
+                    LIMIT 1
+                ), A.PRESTADOR_FK) AS PRESTADOR_FK,
                     A.SERVICO_FK,
-                    A.DATA_AGENDAMENTO,
+                    COALESCE((
+                    SELECT MIN(APS.INICIO_ATENDIMENTO) FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = @UsuarioId
+                ), A.DATA_AGENDAMENTO) AS DATA_AGENDAMENTO,
                     A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
                     COALESCE((
@@ -579,7 +598,12 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
                 LEFT JOIN CLIENTES C ON C.ID_CLIENTE = A.CLIENTE_FK
                 LEFT JOIN USUARIOS CU ON CU.ID_USUARIO = C.USUARIO_FK
-                INNER JOIN USUARIOS PU ON PU.ID_USUARIO = A.PRESTADOR_FK
+                INNER JOIN USUARIOS PU ON PU.ID_USUARIO = COALESCE((
+                    SELECT APS.PROFISSIONAL_FK FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = @UsuarioId
+                    LIMIT 1
+                ), A.PRESTADOR_FK)
                 WHERE (
                     A.PRESTADOR_FK = @UsuarioId
                     OR S.USUARIO_FK = @UsuarioId
@@ -630,9 +654,18 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 A.ID_AGENDAMENTO,
                 A.CLIENTE_FK,
                 C.USUARIO_FK AS CLIENTE_USUARIO_FK,
-                A.PRESTADOR_FK,
+                COALESCE((
+                    SELECT APS.PROFISSIONAL_FK FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = COALESCE(@ProfissionalId, @UsuarioId)
+                    LIMIT 1
+                ), A.PRESTADOR_FK) AS PRESTADOR_FK,
                 A.SERVICO_FK,
-                A.DATA_AGENDAMENTO,
+                COALESCE((
+                    SELECT MIN(APS.INICIO_ATENDIMENTO) FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = COALESCE(@ProfissionalId, @UsuarioId)
+                ), A.DATA_AGENDAMENTO) AS DATA_AGENDAMENTO,
                 A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
                 COALESCE((
@@ -662,7 +695,12 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             LEFT JOIN USUARIOS CU
                 ON CU.ID_USUARIO = C.USUARIO_FK
             INNER JOIN USUARIOS PU
-                ON PU.ID_USUARIO = A.PRESTADOR_FK
+                ON PU.ID_USUARIO = COALESCE((
+                    SELECT APS.PROFISSIONAL_FK FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = COALESCE(@ProfissionalId, @UsuarioId)
+                    LIMIT 1
+                ), A.PRESTADOR_FK)
             WHERE (
                 A.PRESTADOR_FK = @UsuarioId
                 OR S.USUARIO_FK = @UsuarioId
@@ -702,12 +740,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     .Add("@Fim", NpgsqlDbType.Timestamp)
                     .Value = dataFim;
 
-                if (profissionalId.HasValue)
-                {
-                    command.Parameters.AddWithValue(
-                        "@ProfissionalId",
-                        profissionalId.Value);
-                }
+                command.Parameters.Add("@ProfissionalId", NpgsqlDbType.Integer).Value =
+                    (object?)profissionalId ?? DBNull.Value;
             });
         }
         public async Task<TipoUsuario> ObterTipoUsuarioAsync(int responsavelId)
