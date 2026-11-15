@@ -834,7 +834,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     TEMPO_ESTIMADO_MINUTOS
                 FROM SERVICOS
                 WHERE ID_SERVICO = @ServicoId
-                  AND USUARIO_FK = @ResponsavelId", connection, transaction);
+                  AND USUARIO_FK = @ResponsavelId
+                  AND ATIVO = TRUE", connection, transaction);
 
             command.Parameters.AddWithValue("@ServicoId", servicoId);
             command.Parameters.AddWithValue("@ResponsavelId", responsavelId);
