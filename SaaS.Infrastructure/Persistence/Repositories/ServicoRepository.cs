@@ -73,6 +73,22 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             }
         }
 
+        public async Task<bool> AlterarAtivoAsync(int servicoId, int usuarioId, bool ativo)
+        {
+            if (servicoId <= 0 || usuarioId <= 0)
+                return false;
+            await using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(@"
+                UPDATE SERVICOS SET ATIVO = @Ativo
+                WHERE ID_SERVICO = @ServicoId AND USUARIO_FK = @UsuarioId
+                  AND ATIVO IS DISTINCT FROM @Ativo", connection);
+            command.Parameters.AddWithValue("@Ativo", ativo);
+            command.Parameters.AddWithValue("@ServicoId", servicoId);
+            command.Parameters.AddWithValue("@UsuarioId", usuarioId);
+            return await command.ExecuteNonQueryAsync() > 0;
+        }
+
         public async Task<List<ServicoModel>> ListarServicos(int id)
         {
             bool idInformado = id > 0;
@@ -96,6 +112,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                                 S.NOME_SERVICO,
                                 S.VALOR_SERVICO,
                                 S.TEMPO_ESTIMADO_MINUTOS,
+                                S.ATIVO,
                                 COALESCE(to_jsonb(S)->>'imagem_servico', '') AS IMAGEM_SERVICO,
                                 U.TIPO_USUARIO
                             FROM PROFISSIONAL_SERVICOS PS
@@ -106,6 +123,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                                    AND V.EMPRESA_FK = PS.EMPRESA_FK
                                    AND V.STATUS_SOLICITACAO = 'APROVADO'
                             WHERE PS.PROFISSIONAL_FK = @Id
+                              AND S.ATIVO = TRUE
                             ORDER BY S.NOME_SERVICO"
                     : @"
                             SELECT
@@ -115,6 +133,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                                 S.NOME_SERVICO,
                                 S.VALOR_SERVICO,
                                 S.TEMPO_ESTIMADO_MINUTOS,
+                                S.ATIVO,
                                 COALESCE(to_jsonb(S)->>'imagem_servico', '') AS IMAGEM_SERVICO,
                                 U.TIPO_USUARIO
                             FROM SERVICOS S
@@ -150,7 +169,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                                 NomeServico = reader.GetString(reader.GetOrdinal("NOME_SERVICO")),
                                 Valor = reader.GetDecimal(reader.GetOrdinal("VALOR_SERVICO")),
                                 TempoEstimadoMinutos = reader.GetInt32(reader.GetOrdinal("TEMPO_ESTIMADO_MINUTOS")),
-                                ImagemServico = reader.GetString(reader.GetOrdinal("IMAGEM_SERVICO"))
+                                ImagemServico = reader.GetString(reader.GetOrdinal("IMAGEM_SERVICO")),
+                                Ativo = reader.GetBoolean(reader.GetOrdinal("ATIVO"))
                             });
                         }
                     }
@@ -232,7 +252,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 NomeServico = reader.GetString(2),
                 Valor = reader.GetDecimal(3),
                 TempoEstimadoMinutos = reader.GetInt32(4),
-                ImagemServico = reader.GetString(5)
+                ImagemServico = reader.GetString(5),
+                Ativo = servico.Ativo
             };
         }
 
