@@ -95,6 +95,37 @@ namespace SaaS.Api.Controllers
                 : Conflict(new { message = "A solicitacao nao esta mais pendente ou nao pertence a empresa." });
         }
 
+
+        [HttpPatch("empresa/{empresaId:int}/profissionais/{profissionalId:int}/status")]
+        [Authorize(Roles = "EMPRESA")]
+        public async Task<IActionResult> AlterarStatusProfissional(
+            int empresaId, int profissionalId, [FromBody] AlterarStatusProfissionalRequest request)
+        {
+            if (!User.EhProprioUsuario(empresaId))
+                return Forbid();
+
+            if (empresaId <= 0 || profissionalId <= 0)
+                return BadRequest(new { message = "Empresa ou profissional invalido." });
+
+            var status = request?.Status?.Trim().ToUpperInvariant();
+            if (status is not ("APROVADO" or "INATIVO" or "DESVINCULADO"))
+                return BadRequest(new { message = "Informe APROVADO, INATIVO ou DESVINCULADO." });
+
+            // Reativar exige que o vínculo esteja INATIVO; os demais estados
+            // de origem são verificados atomicamente pelo repositório.
+            var atualizado = await _vinculoRepository.AlterarStatusVinculoProfissionalAsync(
+                empresaId, profissionalId, status);
+
+            return atualizado
+                ? NoContent()
+                : Conflict(new { message = "O vínculo não existe ou não permite esta alteração." });
+        }
+
+        public sealed class AlterarStatusProfissionalRequest
+        {
+            public string? Status { get; set; }
+        }
+
         [HttpGet("profissional/status")]
         [Authorize(Roles = "PROFISSIONAL")]
         public async Task<IActionResult> ObterStatusProfissional()
