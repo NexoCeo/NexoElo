@@ -97,7 +97,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 INNER JOIN USUARIOS U
                     ON U.ID_USUARIO = V.PROFISSIONAL_FK
                 WHERE U.TIPO_USUARIO = 'PROFISSIONAL'
-                  AND V.STATUS_SOLICITACAO = 'APROVADO'
+                  AND V.STATUS_SOLICITACAO IN ('APROVADO', 'INATIVO')
                 ORDER BY U.NOME_USUARIO";
         
             using var command = new NpgsqlCommand(query, connection);
@@ -338,7 +338,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 WHERE V.EMPRESA_FK = @EmpresaId
                   AND (
                       (@Historico = FALSE AND V.STATUS_SOLICITACAO = 'PENDENTE')
-                      OR (@Historico = TRUE AND V.STATUS_SOLICITACAO IN ('APROVADO', 'RECUSADO'))
+                      OR (@Historico = TRUE AND V.STATUS_SOLICITACAO IN ('APROVADO', 'RECUSADO', 'INATIVO', 'DESVINCULADO'))
                   )
                   AND U.TIPO_USUARIO = 'PROFISSIONAL'
                 ORDER BY
@@ -549,6 +549,42 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             };
         }
 
+
+        // Atualiza somente o vínculo mais recente desta empresa e profissional.
+        // O cadastro do usuário e os agendamentos históricos permanecem intactos.
+        public async Task<bool> AlterarStatusVinculoProfissionalAsync(int empresaId, int profissionalId, string status)
+        {
+            if (empresaId <= 0 || profissionalId <= 0 ||
+                status is not ("APROVADO" or "INATIVO" or "DESVINCULADO"))
+                return false;
+
+            await using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            const string sql = @"
+                UPDATE VINCULOS
+                SET STATUS_SOLICITACAO = @NovoStatus
+                WHERE ID_SOLICITACAO = (
+                    SELECT V.ID_SOLICITACAO
+                    FROM VINCULOS V
+                    INNER JOIN USUARIOS U ON U.ID_USUARIO = V.PROFISSIONAL_FK
+                    WHERE V.EMPRESA_FK = @EmpresaId
+                      AND V.PROFISSIONAL_FK = @ProfissionalId
+                      AND U.TIPO_USUARIO = 'PROFISSIONAL'
+                    ORDER BY V.DATA_SOLICITACAO DESC, V.ID_SOLICITACAO DESC
+                    LIMIT 1
+                )
+                  AND (
+                    (STATUS_SOLICITACAO = 'APROVADO' AND @NovoStatus IN ('INATIVO', 'DESVINCULADO'))
+                    OR (STATUS_SOLICITACAO = 'INATIVO' AND @NovoStatus IN ('APROVADO', 'DESVINCULADO'))
+                  );";
+            await using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@EmpresaId", empresaId);
+            command.Parameters.AddWithValue("@ProfissionalId", profissionalId);
+            command.Parameters.AddWithValue("@NovoStatus", status);
+            return await command.ExecuteNonQueryAsync() > 0;
+        }
+
         public async Task<bool> PossuiVinculoAprovadoAsync(int profissionalId)
         {
             if (profissionalId <= 0)
@@ -565,6 +601,11 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 FROM VINCULOS
                 WHERE PROFISSIONAL_FK = @ProfissionalId
                   AND STATUS_SOLICITACAO = 'APROVADO'
+                  AND ID_SOLICITACAO = (
+                      SELECT ID_SOLICITACAO FROM VINCULOS
+                      WHERE PROFISSIONAL_FK = @ProfissionalId
+                      ORDER BY DATA_SOLICITACAO DESC, ID_SOLICITACAO DESC LIMIT 1
+                  )
             );";
 
             await using var command =
@@ -600,6 +641,11 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                       WHERE V.PROFISSIONAL_FK = P.ID_USUARIO
                         AND V.EMPRESA_FK = E.ID_USUARIO
                         AND V.STATUS_SOLICITACAO = 'APROVADO'
+                        AND V.ID_SOLICITACAO = (
+                            SELECT ID_SOLICITACAO FROM VINCULOS
+                            WHERE PROFISSIONAL_FK = P.ID_USUARIO AND EMPRESA_FK = E.ID_USUARIO
+                            ORDER BY DATA_SOLICITACAO DESC, ID_SOLICITACAO DESC LIMIT 1
+                        )
                   )
                 LIMIT 1", connection, transaction);
 
