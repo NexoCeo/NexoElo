@@ -64,6 +64,45 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             return resultado;
         }
 
+
+        private static async Task<List<(int ServicoId, int ProfissionalId, int Duracao, decimal Valor)>> PrepararAtendimentos(
+            NpgsqlConnection connection, NpgsqlTransaction transaction, int empresaId,
+            IReadOnlyList<AtendimentoProfissionalModel> itens)
+        {
+            if (itens.Count == 0 || itens.Count > 12 ||
+                itens.Any(x => x.ProfissionalId <= 0 || x.ServicoId <= 0) ||
+                itens.Select(x => x.ServicoId).Distinct().Count() != itens.Count)
+                throw new ArgumentException("Selecione entre 1 e 12 servicos distintos com profissional.");
+
+            var result = new List<(int ServicoId, int ProfissionalId, int Duracao, decimal Valor)>();
+            foreach (var item in itens)
+            {
+                var servico = await ObterServico(connection, transaction, item.ServicoId, empresaId);
+                var contexto = new AgendamentoModel {
+                    EmpresaId = empresaId, ProfissionalId = item.ProfissionalId, ServicoId = item.ServicoId
+                };
+                await ValidarResponsavelEPrestador(connection, transaction, contexto, empresaId, item.ProfissionalId);
+                result.Add((item.ServicoId, item.ProfissionalId, servico.DuracaoMinutos, servico.Valor));
+            }
+            return result;
+        }
+
+        private static async Task<bool> SequenciaDisponivel(
+            NpgsqlConnection connection, NpgsqlTransaction transaction, int empresaId,
+            IReadOnlyList<(int ServicoId, int ProfissionalId, int Duracao, decimal Valor)> itens,
+            DateTime inicio, FuncionamentoPrestadorConfig funcionamento)
+        {
+            var instante = inicio;
+            foreach (var item in itens)
+            {
+                if (ObterIntervaloFuncionamento(funcionamento, instante, item.Duracao) == null ||
+                    await ExisteConflito(connection, transaction, item.ProfissionalId, instante, instante.AddMinutes(item.Duracao)))
+                    return false;
+                instante = instante.AddMinutes(item.Duracao);
+            }
+            return true;
+        }
+
         public async Task<AgendamentoModel> CriarAgendamentoAsync(AgendamentoModel agendamento)
         {
             ValidarDadosBasicos(agendamento);
@@ -109,29 +148,39 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         $"Este cliente já possui um agendamento ativo para {agendamentoAtivo.Value:dd/MM/yyyy} às {agendamentoAtivo.Value:HH:mm}. Conclua ou cancele o agendamento anterior antes de realizar um novo agendamento.");
                 }
 
-                var ids = agendamento.ServicoIds.Count > 0 ? agendamento.ServicoIds : new List<int> { agendamento.ServicoId };
-                if (ids.Count > 12 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Count)
+                var multiprofissional = agendamento.Atendimentos.Count > 0;
+                var detalhados = multiprofissional
+                    ? await PrepararAtendimentos(connection, transaction, responsavelId, agendamento.Atendimentos)
+                    : new List<(int ServicoId, int ProfissionalId, int Duracao, decimal Valor)>();
+                var ids = multiprofissional ? detalhados.Select(item => item.ServicoId).ToList()
+                    : agendamento.ServicoIds.Count > 0 ? agendamento.ServicoIds : new List<int> { agendamento.ServicoId };
+                if (!multiprofissional && (ids.Count > 12 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Count))
                     throw new ArgumentException("Selecione de 1 a 12 servicos distintos.");
                 var servicos = new List<ServicoAgendamentoConfig>();
-                foreach (var idServico in ids)
-                {
-                    var item = await ObterServico(connection, transaction, idServico, responsavelId);
-                    agendamento.ServicoId = idServico;
-                    await ValidarResponsavelEPrestador(connection, transaction, agendamento, responsavelId, prestadorId);
-                    servicos.Add(item);
-                }
+                if (!multiprofissional)
+                    foreach (var idServico in ids)
+                    {
+                        var item = await ObterServico(connection, transaction, idServico, responsavelId);
+                        agendamento.ServicoId = idServico;
+                        await ValidarResponsavelEPrestador(connection, transaction, agendamento, responsavelId, prestadorId);
+                        servicos.Add(item);
+                    }
                 agendamento.ServicoId = ids[0];
                 agendamento.ServicoIds = ids;
                 var servico = new ServicoAgendamentoConfig
                 {
-                    Valor = servicos.Sum(item => item.Valor),
-                    DuracaoMinutos = servicos.Sum(item => item.DuracaoMinutos)
+                    Valor = multiprofissional ? detalhados.Sum(item => item.Valor) : servicos.Sum(item => item.Valor),
+                    DuracaoMinutos = multiprofissional ? detalhados.Sum(item => item.Duracao) : servicos.Sum(item => item.DuracaoMinutos)
                 };
 
                 // Servicos e vinculos foram validados para o mesmo profissional.
                 // Serializa a validacao e a gravacao por prestador. Assim, duas requisicoes
                 // simultaneas nao conseguem reservar intervalos sobrepostos.
-                await AdquirirBloqueioPrestador(connection, transaction, prestadorId);
+                if (multiprofissional)
+                    foreach (var idProfissional in detalhados.Select(item => item.ProfissionalId).Distinct().OrderBy(id => id))
+                        await AdquirirBloqueioPrestador(connection, transaction, idProfissional);
+                else
+                    await AdquirirBloqueioPrestador(connection, transaction, prestadorId);
 
                 var funcionamento = await ObterFuncionamentoResponsavel(
                     connection,
@@ -154,10 +203,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         "Selecione uma data e um horario futuros.");
                 }
 
-                if (ObterIntervaloFuncionamento(
-                        funcionamento,
-                        inicioAgendamento,
-                        servico.DuracaoMinutos) == null)
+                if (multiprofissional ? !await SequenciaDisponivel(connection, transaction, responsavelId, detalhados, inicioAgendamento, funcionamento) :
+                    ObterIntervaloFuncionamento(funcionamento, inicioAgendamento, servico.DuracaoMinutos) == null)
                 {
                     throw await CriarIndisponibilidade(
                         connection,
@@ -169,7 +216,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         "O horario solicitado ou o termino do servico esta fora do funcionamento configurado.");
                 }
 
-                if (await ExisteConflito(
+                if (!multiprofissional && await ExisteConflito(
                         connection,
                         transaction,
                         prestadorId,
@@ -208,8 +255,9 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 var id = await insertCmd.ExecuteScalarAsync();
                 agendamento.Id = Convert.ToInt32(id);
                 agendamento.ClienteId = clienteUsuarioId;
-                if (ids.Count > 1)
+                if (ids.Count > 1 || multiprofissional)
                 {
+                    var inicioItem = inicioAgendamento;
                     foreach (var idServico in ids)
                     {
                         await using var itemCmd = new NpgsqlCommand(@"
@@ -218,6 +266,20 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         itemCmd.Parameters.AddWithValue("@AgendamentoId", agendamento.Id);
                         itemCmd.Parameters.AddWithValue("@ServicoId", idServico);
                         await itemCmd.ExecuteNonQueryAsync();
+                        if (multiprofissional)
+                        {
+                            var selecionado = detalhados.First(item => item.ServicoId == idServico);
+                            await using var atribuir = new NpgsqlCommand(@"
+                                UPDATE AGENDAMENTO_SERVICOS
+                                SET PROFISSIONAL_FK = @ProfissionalId, INICIO_ATENDIMENTO = @Inicio
+                                WHERE AGENDAMENTO_FK = @AgendamentoId AND SERVICO_FK = @ServicoId", connection, transaction);
+                            atribuir.Parameters.AddWithValue("@ProfissionalId", selecionado.ProfissionalId);
+                            atribuir.Parameters.Add("@Inicio", NpgsqlDbType.Timestamp).Value = inicioItem;
+                            atribuir.Parameters.AddWithValue("@AgendamentoId", agendamento.Id);
+                            atribuir.Parameters.AddWithValue("@ServicoId", idServico);
+                            await atribuir.ExecuteNonQueryAsync();
+                            inicioItem = inicioItem.AddMinutes(selecionado.Duracao);
+                        }
                     }
                 }
 
@@ -243,7 +305,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             int? profissionalId,
             int servicoId,
             DateTime data,
-            IReadOnlyList<int>? servicoIds = null)
+            IReadOnlyList<int>? servicoIds = null,
+            IReadOnlyList<AtendimentoProfissionalModel>? atendimentos = null)
         {
             if (responsavelId <= 0)
                 throw new ArgumentException("Responsavel invalido.");
@@ -296,6 +359,28 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     ServicoId = servicoId,
                     DataAgendamento = dataLocal
                 };
+
+                if (atendimentos is { Count: > 0 })
+                {
+                    if (tipoResponsavel != TipoUsuario.EMPRESA)
+                        throw new ArgumentException("Multiplos profissionais exigem uma empresa.");
+                    var itens = await PrepararAtendimentos(connection, transaction, responsavelId, atendimentos);
+                    var funcionamentoMultiplo = await ObterFuncionamentoResponsavel(connection, transaction, responsavelId);
+                    var agora = ObterAgoraSaoPaulo();
+                    var horariosCandidatos = new List<DateTime>();
+                    if (dataLocal >= agora.Date)
+                        for (var minutos = 0; minutos < 24 * 60; minutos += IntervaloSugestaoMinutos)
+                        {
+                            var candidato = dataLocal.AddMinutes(minutos);
+                            if (candidato <= agora) continue;
+                            if (await SequenciaDisponivel(connection, transaction, responsavelId, itens, candidato, funcionamentoMultiplo))
+                                horariosCandidatos.Add(DateTime.SpecifyKind(candidato, DateTimeKind.Unspecified));
+                        }
+                    await transaction.CommitAsync();
+                    return horariosCandidatos.Select(horario => new HorarioDisponivelModel {
+                        DataAgendamento = horario, Horario = horario.ToString("HH:mm")
+                    }).ToList();
+                }
 
                 var ids = servicoIds is { Count: > 0 } ? servicoIds : new[] { servicoId };
                 if (ids.Count > 12 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Count)
