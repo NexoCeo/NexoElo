@@ -196,6 +196,23 @@ namespace SaaS.Api.Controllers
             }
         }
 
+        [HttpPatch("{id:int}/ativo")]
+        [Authorize(Roles = "EMPRESA,AUTONOMO")]
+        public async Task<IActionResult> AlterarAtivo(int id, [FromBody] AlterarAtivoServicoRequest request)
+        {
+            if (!User.TryGetUsuarioId(out var usuarioId))
+                return Forbid();
+            if (id <= 0 || request == null)
+                return BadRequest(new { message = "Servico invalido." });
+            var atualizado = await _servicoRepository.AlterarAtivoAsync(id, usuarioId, request.Ativo);
+            return atualizado ? NoContent() : Conflict(new { message = "Servico nao encontrado ou ja esta com a situacao informada." });
+        }
+
+        public sealed class AlterarAtivoServicoRequest
+        {
+            public bool Ativo { get; set; }
+        }
+
         [HttpGet("{id:int}/imagem-original")]
         [Authorize(Roles = "EMPRESA,AUTONOMO")]
         public async Task<IActionResult> ObterImagemOriginalServico(int id)
@@ -226,13 +243,21 @@ namespace SaaS.Api.Controllers
             try
             {
                 var servicos = await _servicoRepository.ListarServicos(id);
-                if (_planos != null)
+                // O dono gerencia todos os serviços, incluindo os inativos.
+                // Clientes e outros perfis veem somente os ativos do plano.
+                var gerenciamento = User.TryGetUsuarioId(out var usuarioId)
+                    && usuarioId == id && (User.IsInRole("EMPRESA") || User.IsInRole("AUTONOMO"));
+                if (!gerenciamento)
                 {
-                    var filtrados = new List<ServicoModel>();
-                    foreach(var servico in servicos)
-                        if (await _planos.RecursoAtivoAsync(servico.UsuarioFk ?? id, "SERVICO", servico.Id))
-                            filtrados.Add(servico);
-                    servicos=filtrados;
+                    servicos = servicos.Where(servico => servico.Ativo).ToList();
+                    if (_planos != null)
+                    {
+                        var filtrados = new List<ServicoModel>();
+                        foreach (var servico in servicos)
+                            if (await _planos.RecursoAtivoAsync(servico.UsuarioFk ?? id, "SERVICO", servico.Id))
+                                filtrados.Add(servico);
+                        servicos = filtrados;
+                    }
                 }
                 return Ok(servicos);
             }
