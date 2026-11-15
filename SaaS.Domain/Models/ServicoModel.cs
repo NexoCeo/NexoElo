@@ -13,6 +13,7 @@ namespace SaaS.Domain.Models
         public decimal Valor { get; set; }
         public int TempoEstimadoMinutos { get; set; } = 30;
         public string? ImagemServico { get; set; }
+        public bool Ativo { get; set; } = true;
     }
 }
 
