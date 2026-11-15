@@ -140,7 +140,7 @@ public class AgendamentoControllerTests
         var data = new DateTime(2026, 8, 17);
         var repository = new Mock<IAgendamentoRepository>();
         repository
-            .Setup(item => item.ListarHorariosDisponiveis(7, 9, 2, data))
+            .Setup(item => item.ListarHorariosDisponiveis(7, 9, 2, data, It.IsAny<IReadOnlyList<int>>()))
             .ReturnsAsync(new List<HorarioDisponivelModel>
             {
                 new() { DataAgendamento = data.AddHours(8), Horario = "08:00" },
