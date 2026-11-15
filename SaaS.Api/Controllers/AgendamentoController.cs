@@ -51,7 +51,7 @@ namespace SaaS.Api.Controllers
                 return BadRequest(new { erro = "Dados do agendamento invalidos." });
 
             if (criarAgendamento.ResponsavelId <= 0 ||
-                criarAgendamento.ServicoId <= 0 ||
+                (criarAgendamento.ServicoId <= 0 && (criarAgendamento.ServicoIds == null || criarAgendamento.ServicoIds.Count == 0)) ||
                 criarAgendamento.DataAgendamento == default)
             {
                 return BadRequest(new { erro = "Responsavel, servico, data e horario sao obrigatorios." });
@@ -95,10 +95,19 @@ namespace SaaS.Api.Controllers
                     return BadRequest(new { erro = "Selecione um profissional vinculado a empresa." });
                 }
 
+                var servicoIds = criarAgendamento.ServicoIds is { Count: > 0 }
+                    ? criarAgendamento.ServicoIds
+                    : new List<int> { criarAgendamento.ServicoId };
+                if (servicoIds.Any(id => id <= 0) || servicoIds.Count != servicoIds.Distinct().Count() || servicoIds.Count > 12)
+                    return BadRequest(new { erro = "Selecione de 1 a 12 servicos distintos." });
+
                 if (_planos != null)
                 {
-                    if (!await _planos.RecursoAtivoAsync(criarAgendamento.ResponsavelId, "SERVICO", criarAgendamento.ServicoId))
+                    if (!await _planos.RecursoAtivoAsync(criarAgendamento.ResponsavelId, "SERVICO", servicoIds[0]))
                         return Conflict(new { erro = "Este servico esta indisponivel no plano atual." });
+                    foreach (var idServico in servicoIds.Skip(1))
+                        if (!await _planos.RecursoAtivoAsync(criarAgendamento.ResponsavelId, "SERVICO", idServico))
+                            return Conflict(new { erro = "Um dos servicos esta indisponivel no plano atual." });
                     if (tipoUsuario == TipoUsuario.EMPRESA &&
                         !await _planos.RecursoAtivoAsync(criarAgendamento.ResponsavelId, "PROFISSIONAL", criarAgendamento.ProfissionalId!.Value))
                         return Conflict(new { erro = "Este profissional esta indisponivel no plano atual." });
@@ -107,7 +116,8 @@ namespace SaaS.Api.Controllers
                 var novoAgendamento = new AgendamentoModel
                 {
                     ClienteId = clienteId,
-                    ServicoId = criarAgendamento.ServicoId,
+                    ServicoId = servicoIds[0],
+                    ServicoIds = servicoIds,
                     DataAgendamento = criarAgendamento.DataAgendamento,
                     ProfissionalId = tipoUsuario == TipoUsuario.AUTONOMO
                         ? criarAgendamento.ResponsavelId
@@ -187,17 +197,22 @@ namespace SaaS.Api.Controllers
             [FromQuery] int responsavelId,
             [FromQuery] int? profissionalId,
             [FromQuery] int servicoId,
-            [FromQuery] DateTime data)
+            [FromQuery] DateTime data,
+            [FromQuery] int[]? servicoIds = null)
         {
-            if (responsavelId <= 0 || servicoId <= 0 || data == default)
+            if (responsavelId <= 0 || (servicoId <= 0 && (servicoIds == null || servicoIds.Length == 0)) || data == default)
                 return BadRequest(new { erro = "Responsavel, servico e data sao obrigatorios." });
 
             try
             {
+                var ids = servicoIds is { Length: > 0 } ? servicoIds : new[] { servicoId };
+                if (ids.Length > 12 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length)
+                    return BadRequest(new { erro = "Selecione de 1 a 12 servicos distintos." });
                 if (_planos != null)
                 {
-                    if (!await _planos.RecursoAtivoAsync(responsavelId,"SERVICO",servicoId))
-                        return Ok(Array.Empty<HorarioDisponivelModel>());
+                    foreach (var idServico in ids)
+                        if (!await _planos.RecursoAtivoAsync(responsavelId,"SERVICO",idServico))
+                            return Ok(Array.Empty<HorarioDisponivelModel>());
                     if (profissionalId.HasValue &&
                         !await _planos.RecursoAtivoAsync(responsavelId,"PROFISSIONAL",profissionalId.Value))
                         return Ok(Array.Empty<HorarioDisponivelModel>());
@@ -206,8 +221,9 @@ namespace SaaS.Api.Controllers
                 var horarios = await _agendamentoRepository.ListarHorariosDisponiveis(
                     responsavelId,
                     profissionalId,
-                    servicoId,
-                    data);
+                    ids[0],
+                    data,
+                    ids);
 
                 return Ok(horarios);
             }
