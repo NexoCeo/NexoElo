@@ -109,19 +109,26 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         $"Este cliente já possui um agendamento ativo para {agendamentoAtivo.Value:dd/MM/yyyy} às {agendamentoAtivo.Value:HH:mm}. Conclua ou cancele o agendamento anterior antes de realizar um novo agendamento.");
                 }
 
-                var servico = await ObterServico(
-                    connection,
-                    transaction,
-                    agendamento.ServicoId,
-                    responsavelId);
+                var ids = agendamento.ServicoIds.Count > 0 ? agendamento.ServicoIds : new List<int> { agendamento.ServicoId };
+                if (ids.Count > 12 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Count)
+                    throw new ArgumentException("Selecione de 1 a 12 servicos distintos.");
+                var servicos = new List<ServicoAgendamentoConfig>();
+                foreach (var idServico in ids)
+                {
+                    var item = await ObterServico(connection, transaction, idServico, responsavelId);
+                    agendamento.ServicoId = idServico;
+                    await ValidarResponsavelEPrestador(connection, transaction, agendamento, responsavelId, prestadorId);
+                    servicos.Add(item);
+                }
+                agendamento.ServicoId = ids[0];
+                agendamento.ServicoIds = ids;
+                var servico = new ServicoAgendamentoConfig
+                {
+                    Valor = servicos.Sum(item => item.Valor),
+                    DuracaoMinutos = servicos.Sum(item => item.DuracaoMinutos)
+                };
 
-                await ValidarResponsavelEPrestador(
-                    connection,
-                    transaction,
-                    agendamento,
-                    responsavelId,
-                    prestadorId);
-
+                // Servicos e vinculos foram validados para o mesmo profissional.
                 // Serializa a validacao e a gravacao por prestador. Assim, duas requisicoes
                 // simultaneas nao conseguem reservar intervalos sobrepostos.
                 await AdquirirBloqueioPrestador(connection, transaction, prestadorId);
@@ -201,6 +208,18 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 var id = await insertCmd.ExecuteScalarAsync();
                 agendamento.Id = Convert.ToInt32(id);
                 agendamento.ClienteId = clienteUsuarioId;
+                if (ids.Count > 1)
+                {
+                    foreach (var idServico in ids)
+                    {
+                        await using var itemCmd = new NpgsqlCommand(@"
+                            INSERT INTO AGENDAMENTO_SERVICOS (AGENDAMENTO_FK, SERVICO_FK)
+                            VALUES (@AgendamentoId, @ServicoId)", connection, transaction);
+                        itemCmd.Parameters.AddWithValue("@AgendamentoId", agendamento.Id);
+                        itemCmd.Parameters.AddWithValue("@ServicoId", idServico);
+                        await itemCmd.ExecuteNonQueryAsync();
+                    }
+                }
 
                 await transaction.CommitAsync();
                 return agendamento;
@@ -223,7 +242,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             int responsavelId,
             int? profissionalId,
             int servicoId,
-            DateTime data)
+            DateTime data,
+            IReadOnlyList<int>? servicoIds = null)
         {
             if (responsavelId <= 0)
                 throw new ArgumentException("Responsavel invalido.");
@@ -277,18 +297,17 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     DataAgendamento = dataLocal
                 };
 
-                var servico = await ObterServico(
-                    connection,
-                    transaction,
-                    servicoId,
-                    responsavelId);
-
-                await ValidarResponsavelEPrestador(
-                    connection,
-                    transaction,
-                    contextoAgendamento,
-                    responsavelId,
-                    prestadorId);
+                var ids = servicoIds is { Count: > 0 } ? servicoIds : new[] { servicoId };
+                if (ids.Count > 12 || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Count)
+                    throw new ArgumentException("Selecione de 1 a 12 servicos distintos.");
+                var servicos = new List<ServicoAgendamentoConfig>();
+                foreach (var idServico in ids)
+                {
+                    servicos.Add(await ObterServico(connection, transaction, idServico, responsavelId));
+                    contextoAgendamento.ServicoId = idServico;
+                    await ValidarResponsavelEPrestador(connection, transaction, contextoAgendamento, responsavelId, prestadorId);
+                }
+                var duracaoTotal = servicos.Sum(item => item.DuracaoMinutos);
 
                 var funcionamento = await ObterFuncionamentoResponsavel(
                     connection,
@@ -300,7 +319,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     transaction,
                     prestadorId,
                     funcionamento,
-                    servico.DuracaoMinutos,
+                    duracaoTotal,
                     dataLocal);
 
                 await transaction.CommitAsync();
@@ -347,9 +366,21 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 A.DATA_AGENDAMENTO,
                 A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
-                S.VALOR_SERVICO,
-                S.TEMPO_ESTIMADO_MINUTOS AS DURACAO_MINUTOS,
-                S.NOME_SERVICO,
+                COALESCE((
+                    SELECT SUM(MS.VALOR_SERVICO)
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.VALOR_SERVICO) AS VALOR_SERVICO,
+                COALESCE((
+                    SELECT SUM(MS.TEMPO_ESTIMADO_MINUTOS)::INTEGER
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.TEMPO_ESTIMADO_MINUTOS) AS DURACAO_MINUTOS,
+                COALESCE((
+                    SELECT STRING_AGG(MS.NOME_SERVICO, ' + ' ORDER BY APS.SERVICO_FK)
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.NOME_SERVICO) AS NOME_SERVICO,
                 S.USUARIO_FK AS RESPONSAVEL_FK,
                 PU.TIPO_USUARIO,
                 PU.NOME_USUARIO AS PROFISSIONAL_NOME,
@@ -412,9 +443,21 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     A.DATA_AGENDAMENTO,
                     A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
-                    S.VALOR_SERVICO,
-                    S.TEMPO_ESTIMADO_MINUTOS AS DURACAO_MINUTOS,
-                    S.NOME_SERVICO,
+                    COALESCE((
+                    SELECT SUM(MS.VALOR_SERVICO)
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.VALOR_SERVICO) AS VALOR_SERVICO,
+                    COALESCE((
+                    SELECT SUM(MS.TEMPO_ESTIMADO_MINUTOS)::INTEGER
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.TEMPO_ESTIMADO_MINUTOS) AS DURACAO_MINUTOS,
+                    COALESCE((
+                    SELECT STRING_AGG(MS.NOME_SERVICO, ' + ' ORDER BY APS.SERVICO_FK)
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.NOME_SERVICO) AS NOME_SERVICO,
                     S.USUARIO_FK AS RESPONSAVEL_FK,
                     PU.TIPO_USUARIO,
                     PU.NOME_USUARIO AS PROFISSIONAL_NOME,
@@ -475,9 +518,21 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 A.DATA_AGENDAMENTO,
                 A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
-                S.VALOR_SERVICO,
-                S.TEMPO_ESTIMADO_MINUTOS AS DURACAO_MINUTOS,
-                S.NOME_SERVICO,
+                COALESCE((
+                    SELECT SUM(MS.VALOR_SERVICO)
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.VALOR_SERVICO) AS VALOR_SERVICO,
+                COALESCE((
+                    SELECT SUM(MS.TEMPO_ESTIMADO_MINUTOS)::INTEGER
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.TEMPO_ESTIMADO_MINUTOS) AS DURACAO_MINUTOS,
+                COALESCE((
+                    SELECT STRING_AGG(MS.NOME_SERVICO, ' + ' ORDER BY APS.SERVICO_FK)
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.NOME_SERVICO) AS NOME_SERVICO,
                 S.USUARIO_FK AS RESPONSAVEL_FK,
                 PU.TIPO_USUARIO,
                 PU.NOME_USUARIO AS PROFISSIONAL_NOME,
@@ -581,9 +636,21 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         A.DATA_AGENDAMENTO,
                         A.STATUS_AGENDAMENTO,
                 A.MOTIVO_CANCELAMENTO,
-                        S.VALOR_SERVICO,
-                        S.TEMPO_ESTIMADO_MINUTOS AS DURACAO_MINUTOS,
-                        S.NOME_SERVICO,
+                        COALESCE((
+                    SELECT SUM(MS.VALOR_SERVICO)
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.VALOR_SERVICO) AS VALOR_SERVICO,
+                        COALESCE((
+                    SELECT SUM(MS.TEMPO_ESTIMADO_MINUTOS)::INTEGER
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.TEMPO_ESTIMADO_MINUTOS) AS DURACAO_MINUTOS,
+                        COALESCE((
+                    SELECT STRING_AGG(MS.NOME_SERVICO, ' + ' ORDER BY APS.SERVICO_FK)
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.NOME_SERVICO) AS NOME_SERVICO,
                         S.USUARIO_FK AS RESPONSAVEL_FK,
                         PU.TIPO_USUARIO,
                         PU.NOME_USUARIO AS PROFISSIONAL_NOME,
@@ -1059,7 +1126,11 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                       AND UPPER(TRIM(A.STATUS_AGENDAMENTO)) <> 'CANCELADO'
                       AND A.DATA_AGENDAMENTO < @Fim
                       AND A.DATA_AGENDAMENTO
-                            + (GREATEST(S.TEMPO_ESTIMADO_MINUTOS, 1) * INTERVAL '1 minute') > @Inicio
+                            + (GREATEST(COALESCE((
+                    SELECT SUM(MS.TEMPO_ESTIMADO_MINUTOS)::INTEGER
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.TEMPO_ESTIMADO_MINUTOS), 1) * INTERVAL '1 minute') > @Inicio
                 )", connection, transaction);
 
             command.Parameters.AddWithValue("@PrestadorId", prestadorId);
@@ -1166,7 +1237,11 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             await using var command = new NpgsqlCommand(@"
                 SELECT
                     A.DATA_AGENDAMENTO,
-                    GREATEST(S.TEMPO_ESTIMADO_MINUTOS, 1) AS DURACAO_MINUTOS
+                    GREATEST(COALESCE((
+                    SELECT SUM(MS.TEMPO_ESTIMADO_MINUTOS)::INTEGER
+                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                ), S.TEMPO_ESTIMADO_MINUTOS), 1) AS DURACAO_MINUTOS
                 FROM AGENDAMENTOS A
                 INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
                 WHERE A.PRESTADOR_FK = @PrestadorId
