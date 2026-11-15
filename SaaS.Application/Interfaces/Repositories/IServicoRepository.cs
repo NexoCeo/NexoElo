@@ -11,6 +11,7 @@ namespace SaaS.Application.Interfaces.Repositories
             ServicoModel servico,
             bool atualizarImagem);
         Task<List<ServicoModel>> ListarServicos(int id);
+        Task<bool> AlterarAtivoAsync(int servicoId, int usuarioId, bool ativo);
     }
 }
 
