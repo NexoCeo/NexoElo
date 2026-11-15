@@ -707,6 +707,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 WHERE PS.PROFISSIONAL_FK = @ProfissionalId
                   AND PS.EMPRESA_FK = @EmpresaId
                   AND S.USUARIO_FK = @EmpresaId
+                  AND S.ATIVO = TRUE
                 ORDER BY S.NOME_SERVICO", connection);
 
             command.Parameters.AddWithValue("@ProfissionalId", profissionalId);
