@@ -6,6 +6,7 @@ namespace SaaS.Domain.Models
         public int ResponsavelId { get; set; }
         public int? ProfissionalId { get; set; }
         public int ServicoId { get; set; }
+        public List<int>? ServicoIds { get; set; }
         public DateTime DataAgendamento { get; set; }
     }
 }
