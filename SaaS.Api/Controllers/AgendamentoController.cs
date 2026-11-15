@@ -114,9 +114,14 @@ namespace SaaS.Api.Controllers
                     foreach (var idServico in servicoIds.Skip(1))
                         if (!await _planos.RecursoAtivoAsync(criarAgendamento.ResponsavelId, "SERVICO", idServico))
                             return Conflict(new { erro = "Um dos servicos esta indisponivel no plano atual." });
-                    if (tipoUsuario == TipoUsuario.EMPRESA &&
-                        !await _planos.RecursoAtivoAsync(criarAgendamento.ResponsavelId, "PROFISSIONAL", criarAgendamento.ProfissionalId!.Value))
-                        return Conflict(new { erro = "Este profissional esta indisponivel no plano atual." });
+                    if (tipoUsuario == TipoUsuario.EMPRESA)
+                    {
+                        var idsProfissionais = atendimentos?.Select(item => item.ProfissionalId).Distinct()
+                            ?? new[] { criarAgendamento.ProfissionalId!.Value };
+                        foreach (var idProfissional in idsProfissionais)
+                            if (!await _planos.RecursoAtivoAsync(criarAgendamento.ResponsavelId, "PROFISSIONAL", idProfissional))
+                                return Conflict(new { erro = "Um dos profissionais esta indisponivel no plano atual." });
+                    }
                 }
 
                 var novoAgendamento = new AgendamentoModel
@@ -531,6 +536,10 @@ namespace SaaS.Api.Controllers
 
             if (agendamento.ProfissionalId.GetValueOrDefault() > 0)
                 usuariosNotificados.Add(agendamento.ProfissionalId!.Value);
+
+            foreach (var atendimento in agendamento.Atendimentos)
+                if (atendimento.ProfissionalId > 0)
+                    usuariosNotificados.Add(atendimento.ProfissionalId);
 
             var payload = new
             {
