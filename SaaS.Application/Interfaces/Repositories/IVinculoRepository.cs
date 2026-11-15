@@ -19,6 +19,7 @@ namespace SaaS.Application.Interfaces.Repositories
         Task<IEnumerable<SolicitacaoVinculoModel>> ListarHistoricoSolicitacoesPorEmpresa(int empresaId);
 
         Task<bool> PossuiVinculoAprovadoAsync(int profissionalId);
+        Task<bool> AlterarStatusVinculoProfissionalAsync(int empresaId, int profissionalId, string status);
 
         Task<bool> ResponderSolicitacaoAsync(
             int solicitacaoId,
