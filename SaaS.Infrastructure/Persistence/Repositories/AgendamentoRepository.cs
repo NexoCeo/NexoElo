@@ -1202,29 +1202,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             DateTime inicio,
             DateTime fim)
         {
-            await using var command = new NpgsqlCommand(@"
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM AGENDAMENTOS A
-                    INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
-                    WHERE A.PRESTADOR_FK = @PrestadorId
-                      AND UPPER(TRIM(A.STATUS_AGENDAMENTO)) <> 'CANCELADO'
-                      AND A.DATA_AGENDAMENTO < @Fim
-                      AND A.DATA_AGENDAMENTO
-                            + (GREATEST(COALESCE((
-                    SELECT SUM(MS.TEMPO_ESTIMADO_MINUTOS)::INTEGER
-                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
-                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
-                ), S.TEMPO_ESTIMADO_MINUTOS), 1) * INTERVAL '1 minute') > @Inicio
-                )", connection, transaction);
-
-            command.Parameters.AddWithValue("@PrestadorId", prestadorId);
-            command.Parameters.Add("@Inicio", NpgsqlDbType.Timestamp).Value =
-                DateTime.SpecifyKind(inicio, DateTimeKind.Unspecified);
-            command.Parameters.Add("@Fim", NpgsqlDbType.Timestamp).Value =
-                DateTime.SpecifyKind(fim, DateTimeKind.Unspecified);
-
-            return Convert.ToBoolean(await command.ExecuteScalarAsync());
+            var ocupados = await ObterIntervalosOcupados(connection, transaction, prestadorId, inicio.AddDays(-1), fim);
+            return ocupados.Any(item => item.Inicio < fim && item.Fim > inicio);
         }
 
         private static async Task<AgendamentoIndisponivelException> CriarIndisponibilidade(
@@ -1320,20 +1299,33 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             var intervalos = new List<IntervaloOcupado>();
 
             await using var command = new NpgsqlCommand(@"
-                SELECT
-                    A.DATA_AGENDAMENTO,
+                SELECT LIVRE.INICIO, LIVRE.DURACAO_MINUTOS
+                FROM (
+                  SELECT A.DATA_AGENDAMENTO AS INICIO,
                     GREATEST(COALESCE((
-                    SELECT SUM(MS.TEMPO_ESTIMADO_MINUTOS)::INTEGER
-                    FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
-                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
-                ), S.TEMPO_ESTIMADO_MINUTOS), 1) AS DURACAO_MINUTOS
-                FROM AGENDAMENTOS A
-                INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
-                WHERE A.PRESTADOR_FK = @PrestadorId
-                  AND UPPER(TRIM(A.STATUS_AGENDAMENTO)) <> 'CANCELADO'
-                  AND A.DATA_AGENDAMENTO >= @Inicio
-                  AND A.DATA_AGENDAMENTO < @Fim
-                ORDER BY A.DATA_AGENDAMENTO", connection, transaction);
+                        SELECT SUM(MS.TEMPO_ESTIMADO_MINUTOS)::INTEGER
+                        FROM AGENDAMENTO_SERVICOS APS JOIN SERVICOS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                    ), S.TEMPO_ESTIMADO_MINUTOS), 1) AS DURACAO_MINUTOS
+                  FROM AGENDAMENTOS A JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
+                  WHERE A.PRESTADOR_FK = @PrestadorId
+                    AND UPPER(TRIM(A.STATUS_AGENDAMENTO)) <> 'CANCELADO'
+                    AND NOT EXISTS (
+                      SELECT 1 FROM AGENDAMENTO_SERVICOS APS
+                      WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO AND APS.PROFISSIONAL_FK IS NOT NULL)
+                  UNION ALL
+                  SELECT APS.INICIO_ATENDIMENTO AS INICIO,
+                    GREATEST(S.TEMPO_ESTIMADO_MINUTOS, 1) AS DURACAO_MINUTOS
+                  FROM AGENDAMENTO_SERVICOS APS
+                  JOIN AGENDAMENTOS A ON A.ID_AGENDAMENTO = APS.AGENDAMENTO_FK
+                  JOIN SERVICOS S ON S.ID_SERVICO = APS.SERVICO_FK
+                  WHERE APS.PROFISSIONAL_FK = @PrestadorId
+                    AND UPPER(TRIM(A.STATUS_AGENDAMENTO)) <> 'CANCELADO'
+                    AND APS.INICIO_ATENDIMENTO IS NOT NULL
+                ) LIVRE
+                WHERE LIVRE.INICIO < @Fim
+                  AND LIVRE.INICIO + LIVRE.DURACAO_MINUTOS * INTERVAL '1 minute' > @Inicio
+                ORDER BY LIVRE.INICIO", connection, transaction);
 
             command.Parameters.AddWithValue("@PrestadorId", prestadorId);
             command.Parameters.Add("@Inicio", NpgsqlDbType.Timestamp).Value =
@@ -1344,7 +1336,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                var inicioOcupado = reader.GetDateTime(reader.GetOrdinal("DATA_AGENDAMENTO"));
+                var inicioOcupado = reader.GetDateTime(reader.GetOrdinal("INICIO"));
                 var duracao = reader.GetInt32(reader.GetOrdinal("DURACAO_MINUTOS"));
 
                 intervalos.Add(new IntervaloOcupado
