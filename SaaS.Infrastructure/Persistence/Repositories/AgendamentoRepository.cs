@@ -501,6 +501,11 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             WHERE (
                 A.PRESTADOR_FK = @UsuarioId
                 OR S.USUARIO_FK = @UsuarioId
+                OR EXISTS (
+                    SELECT 1 FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = @UsuarioId
+                )
             )
               AND A.DATA_AGENDAMENTO >= @Inicio
               AND A.DATA_AGENDAMENTO < @Fim";
@@ -508,7 +513,11 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 if (profissionalId.HasValue)
                 {
                     sql += @"
-              AND A.PRESTADOR_FK = @ProfissionalId";
+              AND (A.PRESTADOR_FK = @ProfissionalId OR EXISTS (
+                    SELECT 1 FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = @ProfissionalId
+                ))";
                 }
 
                 sql += @"
@@ -575,6 +584,10 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     A.PRESTADOR_FK = @UsuarioId
                     OR S.USUARIO_FK = @UsuarioId
                     OR C.USUARIO_FK = @UsuarioId
+                    OR EXISTS (
+                        SELECT 1 FROM AGENDAMENTO_SERVICOS APS
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO AND APS.PROFISSIONAL_FK = @UsuarioId
+                    )
                 )
                 ORDER BY A.DATA_AGENDAMENTO DESC";
 
@@ -653,6 +666,11 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             WHERE (
                 A.PRESTADOR_FK = @UsuarioId
                 OR S.USUARIO_FK = @UsuarioId
+                OR EXISTS (
+                    SELECT 1 FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = @UsuarioId
+                )
             )
               AND A.DATA_AGENDAMENTO >= @Inicio
               AND A.DATA_AGENDAMENTO < @Fim";
@@ -660,7 +678,11 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 if (profissionalId.HasValue)
                 {
                     sql += @"
-              AND A.PRESTADOR_FK = @ProfissionalId";
+              AND (A.PRESTADOR_FK = @ProfissionalId OR EXISTS (
+                    SELECT 1 FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK = @ProfissionalId
+                ))";
                 }
 
                 sql += @"
