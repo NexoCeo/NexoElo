@@ -11,7 +11,8 @@ namespace SaaS.Application.Interfaces.Repositories
             int responsavelId,
             int? profissionalId,
             int servicoId,
-            DateTime data);
+            DateTime data,
+            IReadOnlyList<int>? servicoIds = null);
         Task<List<AgendamentoModel>> ListarAgendamentosDoDia(int usuarioId);
         Task<List<AgendamentoModel>> ListarAgendamentosPorData(int usuarioId, DateTime data, int? profissionalId = null);
         Task<List<AgendamentoModel>> ListarHistoricoAgendamentos(int usuarioId);
