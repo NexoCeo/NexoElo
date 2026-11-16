@@ -340,6 +340,43 @@ public class AgendamentoControllerTests
         Assert.IsType<ConflictObjectResult>(result);
     }
 
+    [Theory]
+    [InlineData("CANCELADO")]
+    [InlineData("CONCLUIDO")]
+    public async Task ProfissionalAtribuidoPodeAtualizarStatus(string novoStatus)
+    {
+        var repository = new Mock<IAgendamentoRepository>();
+        repository.Setup(r => r.AtualizarStatusAsync(17, 9, novoStatus))
+            .ReturnsAsync(new AgendamentoModel {
+                Id = 17, ClienteId = 4, EmpresaId = 7,
+                ProfissionalId = 9, Status = novoStatus,
+                DataAgendamento = new DateTime(2026, 11, 16, 8, 0, 0)
+            });
+        var controller = new AgendamentoController(repository.Object,
+            Mock.Of<IVinculoRepository>(), Mock.Of<IHubContext<AgendaHub>>(),
+            Mock.Of<ILogger<AgendamentoController>>())
+        { ControllerContext = CreateControllerContext(9, "PROFISSIONAL") };
+        var result = await controller.AtualizarStatus(17,
+            new AtualizarStatusAgendamentoModel { Status = novoStatus });
+        Assert.IsType<OkObjectResult>(result);
+        repository.Verify(r => r.AtualizarStatusAsync(17, 9, novoStatus), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProfissionalSemVinculoNaoPodeAtualizarStatus()
+    {
+        var repository = new Mock<IAgendamentoRepository>();
+        repository.Setup(r => r.AtualizarStatusAsync(17, 10, "CONCLUIDO"))
+            .ThrowsAsync(new UnauthorizedAccessException());
+        var controller = new AgendamentoController(repository.Object,
+            Mock.Of<IVinculoRepository>(), Mock.Of<IHubContext<AgendaHub>>(),
+            Mock.Of<ILogger<AgendamentoController>>())
+        { ControllerContext = CreateControllerContext(10, "PROFISSIONAL") };
+        var result = await controller.AtualizarStatus(17,
+            new AtualizarStatusAgendamentoModel { Status = "CONCLUIDO" });
+        Assert.IsType<ForbidResult>(result);
+    }
+
     [Fact]
     public async Task ConcluirAgendamentosDoDiaUsaUsuarioAutenticado()
     {
