@@ -972,10 +972,39 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     };
                 }
 
+                // Profissionais só podem alterar reservas nas quais estão associados:
+                // tanto o prestador principal quanto profissionais dos serviços adicionais.
+                var profissionalVinculado = false;
+                if (tipoSolicitante == TipoUsuario.PROFISSIONAL)
+                {
+                    await using var vinculoCommand = new NpgsqlCommand(@"
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM AGENDAMENTOS A
+                            WHERE A.ID_AGENDAMENTO = @AgendamentoId
+                              AND (
+                                  (A.PRESTADOR_FK = @UsuarioId
+                                   AND EXISTS (
+                                       SELECT 1 FROM USUARIOS U
+                                       WHERE U.ID_USUARIO = A.PRESTADOR_FK
+                                         AND U.TIPO_USUARIO = 'PROFISSIONAL'))
+                                  OR EXISTS (
+                                      SELECT 1 FROM AGENDAMENTO_SERVICOS APS
+                                      WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                                        AND APS.PROFISSIONAL_FK = @UsuarioId
+                                  )
+                              )
+                        )", connection, transaction);
+                    vinculoCommand.Parameters.AddWithValue("@AgendamentoId", agendamentoId);
+                    vinculoCommand.Parameters.AddWithValue("@UsuarioId", usuarioId);
+                    profissionalVinculado = (bool)(await vinculoCommand.ExecuteScalarAsync() ?? false);
+                }
+
                 var possuiAcesso = tipoSolicitante switch
                 {
                     TipoUsuario.CLIENTE => agendamento.ClienteId == usuarioId,
                     TipoUsuario.EMPRESA or TipoUsuario.AUTONOMO => responsavelId == usuarioId,
+                    TipoUsuario.PROFISSIONAL => profissionalVinculado,
                     _ => false
                 };
 
