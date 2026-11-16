@@ -254,8 +254,9 @@ public sealed class PagamentosAgendamentoController : ControllerBase
             lockCmd.Parameters.AddWithValue("id",id);
             await lockCmd.ExecuteNonQueryAsync();
         }
+        var tentativa = 0;
         await using(var existing = new NpgsqlCommand(@"
-          SELECT STATUS,STRIPE_SESSION_ID,METODO
+          SELECT STATUS,STRIPE_SESSION_ID,METODO,TENTATIVA
           FROM PAGAMENTOS_AGENDAMENTO WHERE AGENDAMENTO_FK=@id FOR UPDATE",conn,transaction))
         {
             existing.Parameters.AddWithValue("id",id);
@@ -265,6 +266,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                 var status=rd.GetString(0);
                 var session=rd.IsDBNull(1)?null:rd.GetString(1);
                 var metodo=rd.GetString(2);
+                tentativa=rd.GetInt32(3);
                 await rd.CloseAsync();
                 if(status=="PAGO" || metodo!="ONLINE") return Conflict(new {erro="Pagamento já registrado."});
                 if(!string.IsNullOrWhiteSpace(session))
@@ -272,7 +274,17 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                     var existingSession=await new SessionService(StripeClient).GetAsync(session);
                     if(existingSession.Status=="open" && !string.IsNullOrWhiteSpace(existingSession.Url))
                         return Ok(new {url=existingSession.Url});
-                    return Conflict(new {erro="Checkout encerrado. Entre em contato com o estabelecimento para nova tentativa."});
+                    if(existingSession.Status != "expired" || existingSession.PaymentStatus == "paid")
+                        return Conflict(new {erro="Aguardando a confirmação do pagamento anterior."});
+                    tentativa++;
+                    // A sessão antiga expirou e não pode mais receber pagamento.
+                    await using var reset = new NpgsqlCommand(@"
+                        UPDATE PAGAMENTOS_AGENDAMENTO SET STRIPE_SESSION_ID=NULL,
+                            TENTATIVA=@tentativa,ATUALIZADO_EM=NOW()
+                        WHERE AGENDAMENTO_FK=@id AND METODO='ONLINE' AND STATUS='PENDENTE'",conn,transaction);
+                    reset.Parameters.AddWithValue("tentativa",tentativa);
+                    reset.Parameters.AddWithValue("id",id);
+                    await reset.ExecuteNonQueryAsync();
                 }
             }
             else await rd.CloseAsync();
@@ -299,7 +311,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
             }
         };
         var checkout=await new SessionService(StripeClient).CreateAsync(options,
-            new RequestOptions {IdempotencyKey="nexoelo-agendamento-checkout-"+id});
+            new RequestOptions {IdempotencyKey="nexoelo-agendamento-checkout-"+id+"-"+tentativa});
         await using(var insert=new NpgsqlCommand(@"
           INSERT INTO PAGAMENTOS_AGENDAMENTO
            (AGENDAMENTO_FK,RECEBEDOR_USUARIO_FK,CLIENTE_USUARIO_FK,VALOR_CENTAVOS,METODO,STATUS,STRIPE_SESSION_ID)
