@@ -496,7 +496,18 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 ), S.NOME_SERVICO) AS NOME_SERVICO,
                 S.USUARIO_FK AS RESPONSAVEL_FK,
                 PU.TIPO_USUARIO,
-                PU.NOME_USUARIO AS PROFISSIONAL_NOME,
+                COALESCE((
+                    SELECT STRING_AGG(P.NOME, ' + ' ORDER BY P.INICIO, P.NOME)
+                    FROM (
+                        SELECT U.ID_USUARIO, U.NOME_USUARIO AS NOME,
+                               MIN(APS.INICIO_ATENDIMENTO) AS INICIO
+                        FROM AGENDAMENTO_SERVICOS APS
+                        INNER JOIN USUARIOS U ON U.ID_USUARIO = APS.PROFISSIONAL_FK
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                          AND APS.PROFISSIONAL_FK IS NOT NULL
+                        GROUP BY U.ID_USUARIO, U.NOME_USUARIO
+                    ) P
+                ), PU.NOME_USUARIO) AS PROFISSIONAL_NOME,
                 CU.NOME_USUARIO AS CLIENTE_NOME
             FROM AGENDAMENTOS A
             INNER JOIN SERVICOS S
@@ -592,7 +603,18 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 ), S.NOME_SERVICO) AS NOME_SERVICO,
                     S.USUARIO_FK AS RESPONSAVEL_FK,
                     PU.TIPO_USUARIO,
-                    PU.NOME_USUARIO AS PROFISSIONAL_NOME,
+                    COALESCE((
+                    SELECT STRING_AGG(P.NOME, ' + ' ORDER BY P.INICIO, P.NOME)
+                    FROM (
+                        SELECT U.ID_USUARIO, U.NOME_USUARIO AS NOME,
+                               MIN(APS.INICIO_ATENDIMENTO) AS INICIO
+                        FROM AGENDAMENTO_SERVICOS APS
+                        INNER JOIN USUARIOS U ON U.ID_USUARIO = APS.PROFISSIONAL_FK
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                          AND APS.PROFISSIONAL_FK IS NOT NULL
+                        GROUP BY U.ID_USUARIO, U.NOME_USUARIO
+                    ) P
+                ), PU.NOME_USUARIO) AS PROFISSIONAL_NOME,
                     CU.NOME_USUARIO AS CLIENTE_NOME
                 FROM AGENDAMENTOS A
                 INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
@@ -685,7 +707,18 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 ), S.NOME_SERVICO) AS NOME_SERVICO,
                 S.USUARIO_FK AS RESPONSAVEL_FK,
                 PU.TIPO_USUARIO,
-                PU.NOME_USUARIO AS PROFISSIONAL_NOME,
+                COALESCE((
+                    SELECT STRING_AGG(P.NOME, ' + ' ORDER BY P.INICIO, P.NOME)
+                    FROM (
+                        SELECT U.ID_USUARIO, U.NOME_USUARIO AS NOME,
+                               MIN(APS.INICIO_ATENDIMENTO) AS INICIO
+                        FROM AGENDAMENTO_SERVICOS APS
+                        INNER JOIN USUARIOS U ON U.ID_USUARIO = APS.PROFISSIONAL_FK
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                          AND APS.PROFISSIONAL_FK IS NOT NULL
+                        GROUP BY U.ID_USUARIO, U.NOME_USUARIO
+                    ) P
+                ), PU.NOME_USUARIO) AS PROFISSIONAL_NOME,
                 CU.NOME_USUARIO AS CLIENTE_NOME
             FROM AGENDAMENTOS A
             INNER JOIN SERVICOS S
@@ -813,7 +846,18 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 ), S.NOME_SERVICO) AS NOME_SERVICO,
                         S.USUARIO_FK AS RESPONSAVEL_FK,
                         PU.TIPO_USUARIO,
-                        PU.NOME_USUARIO AS PROFISSIONAL_NOME,
+                        COALESCE((
+                    SELECT STRING_AGG(P.NOME, ' + ' ORDER BY P.INICIO, P.NOME)
+                    FROM (
+                        SELECT U.ID_USUARIO, U.NOME_USUARIO AS NOME,
+                               MIN(APS.INICIO_ATENDIMENTO) AS INICIO
+                        FROM AGENDAMENTO_SERVICOS APS
+                        INNER JOIN USUARIOS U ON U.ID_USUARIO = APS.PROFISSIONAL_FK
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                          AND APS.PROFISSIONAL_FK IS NOT NULL
+                        GROUP BY U.ID_USUARIO, U.NOME_USUARIO
+                    ) P
+                ), PU.NOME_USUARIO) AS PROFISSIONAL_NOME,
                         CU.NOME_USUARIO AS CLIENTE_NOME
                     FROM AGENDAMENTOS A
                     INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
