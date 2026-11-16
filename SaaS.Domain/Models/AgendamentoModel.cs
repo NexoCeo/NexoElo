@@ -22,6 +22,17 @@ namespace SaaS.Domain.Models
         public string ClienteNome { get; set; } = string.Empty;
         public string ServicoNome { get; set; } = string.Empty;
         public string ProfissionalNome { get; set; } = string.Empty;
+        public List<ProfissionalResumoAgendamentoModel> Profissionais { get; set; } = new();
     }
 }
 
+
+namespace SaaS.Domain.Models
+{
+    public sealed class ProfissionalResumoAgendamentoModel
+    {
+        public int Id { get; set; }
+        public string Nome { get; set; } = string.Empty;
+        public string? FotoPerfil { get; set; }
+    }
+}
