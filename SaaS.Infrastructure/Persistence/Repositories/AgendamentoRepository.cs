@@ -508,6 +508,22 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         GROUP BY U.ID_USUARIO, U.NOME_USUARIO
                     ) P
                 ), PU.NOME_USUARIO) AS PROFISSIONAL_NOME,
+                COALESCE((
+                    SELECT jsonb_agg(
+                        jsonb_build_object('Id', PROF.ID_USUARIO, 'Nome', PROF.NOME_USUARIO,
+                                           'FotoPerfil', PROF.FOTO_PERFIL)
+                        ORDER BY PROF.PRIMEIRO_INICIO, PROF.NOME_USUARIO)
+                    FROM (
+                        SELECT U.ID_USUARIO, U.NOME_USUARIO, U.FOTO_PERFIL,
+                               MIN(APS.INICIO_ATENDIMENTO) AS PRIMEIRO_INICIO
+                        FROM AGENDAMENTO_SERVICOS APS
+                        INNER JOIN USUARIOS U ON U.ID_USUARIO = APS.PROFISSIONAL_FK
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                          AND APS.PROFISSIONAL_FK IS NOT NULL
+                        GROUP BY U.ID_USUARIO, U.NOME_USUARIO, U.FOTO_PERFIL
+                    ) PROF
+                ), jsonb_build_array(jsonb_build_object('Id', PU.ID_USUARIO,
+                    'Nome', PU.NOME_USUARIO, 'FotoPerfil', PU.FOTO_PERFIL))) AS PROFISSIONAIS,
                 CU.NOME_USUARIO AS CLIENTE_NOME
             FROM AGENDAMENTOS A
             INNER JOIN SERVICOS S
@@ -615,6 +631,22 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         GROUP BY U.ID_USUARIO, U.NOME_USUARIO
                     ) P
                 ), PU.NOME_USUARIO) AS PROFISSIONAL_NOME,
+                COALESCE((
+                    SELECT jsonb_agg(
+                        jsonb_build_object('Id', PROF.ID_USUARIO, 'Nome', PROF.NOME_USUARIO,
+                                           'FotoPerfil', PROF.FOTO_PERFIL)
+                        ORDER BY PROF.PRIMEIRO_INICIO, PROF.NOME_USUARIO)
+                    FROM (
+                        SELECT U.ID_USUARIO, U.NOME_USUARIO, U.FOTO_PERFIL,
+                               MIN(APS.INICIO_ATENDIMENTO) AS PRIMEIRO_INICIO
+                        FROM AGENDAMENTO_SERVICOS APS
+                        INNER JOIN USUARIOS U ON U.ID_USUARIO = APS.PROFISSIONAL_FK
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                          AND APS.PROFISSIONAL_FK IS NOT NULL
+                        GROUP BY U.ID_USUARIO, U.NOME_USUARIO, U.FOTO_PERFIL
+                    ) PROF
+                ), jsonb_build_array(jsonb_build_object('Id', PU.ID_USUARIO,
+                    'Nome', PU.NOME_USUARIO, 'FotoPerfil', PU.FOTO_PERFIL))) AS PROFISSIONAIS,
                     CU.NOME_USUARIO AS CLIENTE_NOME
                 FROM AGENDAMENTOS A
                 INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
@@ -719,6 +751,22 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         GROUP BY U.ID_USUARIO, U.NOME_USUARIO
                     ) P
                 ), PU.NOME_USUARIO) AS PROFISSIONAL_NOME,
+                COALESCE((
+                    SELECT jsonb_agg(
+                        jsonb_build_object('Id', PROF.ID_USUARIO, 'Nome', PROF.NOME_USUARIO,
+                                           'FotoPerfil', PROF.FOTO_PERFIL)
+                        ORDER BY PROF.PRIMEIRO_INICIO, PROF.NOME_USUARIO)
+                    FROM (
+                        SELECT U.ID_USUARIO, U.NOME_USUARIO, U.FOTO_PERFIL,
+                               MIN(APS.INICIO_ATENDIMENTO) AS PRIMEIRO_INICIO
+                        FROM AGENDAMENTO_SERVICOS APS
+                        INNER JOIN USUARIOS U ON U.ID_USUARIO = APS.PROFISSIONAL_FK
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                          AND APS.PROFISSIONAL_FK IS NOT NULL
+                        GROUP BY U.ID_USUARIO, U.NOME_USUARIO, U.FOTO_PERFIL
+                    ) PROF
+                ), jsonb_build_array(jsonb_build_object('Id', PU.ID_USUARIO,
+                    'Nome', PU.NOME_USUARIO, 'FotoPerfil', PU.FOTO_PERFIL))) AS PROFISSIONAIS,
                 CU.NOME_USUARIO AS CLIENTE_NOME
             FROM AGENDAMENTOS A
             INNER JOIN SERVICOS S
@@ -858,6 +906,22 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         GROUP BY U.ID_USUARIO, U.NOME_USUARIO
                     ) P
                 ), PU.NOME_USUARIO) AS PROFISSIONAL_NOME,
+                COALESCE((
+                    SELECT jsonb_agg(
+                        jsonb_build_object('Id', PROF.ID_USUARIO, 'Nome', PROF.NOME_USUARIO,
+                                           'FotoPerfil', PROF.FOTO_PERFIL)
+                        ORDER BY PROF.PRIMEIRO_INICIO, PROF.NOME_USUARIO)
+                    FROM (
+                        SELECT U.ID_USUARIO, U.NOME_USUARIO, U.FOTO_PERFIL,
+                               MIN(APS.INICIO_ATENDIMENTO) AS PRIMEIRO_INICIO
+                        FROM AGENDAMENTO_SERVICOS APS
+                        INNER JOIN USUARIOS U ON U.ID_USUARIO = APS.PROFISSIONAL_FK
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                          AND APS.PROFISSIONAL_FK IS NOT NULL
+                        GROUP BY U.ID_USUARIO, U.NOME_USUARIO, U.FOTO_PERFIL
+                    ) PROF
+                ), jsonb_build_array(jsonb_build_object('Id', PU.ID_USUARIO,
+                    'Nome', PU.NOME_USUARIO, 'FotoPerfil', PU.FOTO_PERFIL))) AS PROFISSIONAIS,
                         CU.NOME_USUARIO AS CLIENTE_NOME
                     FROM AGENDAMENTOS A
                     INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
@@ -902,7 +966,9 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                             : reader.GetString(clienteNomeOrdinal),
                         ServicoNome = reader.GetString(reader.GetOrdinal("NOME_SERVICO")),
                         DuracaoMinutos = reader.GetInt32(reader.GetOrdinal("DURACAO_MINUTOS")),
-                        ProfissionalNome = reader.GetString(reader.GetOrdinal("PROFISSIONAL_NOME"))
+                        ProfissionalNome = reader.GetString(reader.GetOrdinal("PROFISSIONAL_NOME")),
+                    Profissionais = System.Text.Json.JsonSerializer.Deserialize<List<ProfissionalResumoAgendamentoModel>>(
+                        reader.GetString(reader.GetOrdinal("PROFISSIONAIS"))) ?? new()
                     };
                 }
 
@@ -1037,7 +1103,9 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                         : reader.GetString(clienteNomeOrdinal),
                     ServicoNome = reader.GetString(reader.GetOrdinal("NOME_SERVICO")),
                     DuracaoMinutos = reader.GetInt32(reader.GetOrdinal("DURACAO_MINUTOS")),
-                    ProfissionalNome = reader.GetString(reader.GetOrdinal("PROFISSIONAL_NOME"))
+                    ProfissionalNome = reader.GetString(reader.GetOrdinal("PROFISSIONAL_NOME")),
+                    Profissionais = System.Text.Json.JsonSerializer.Deserialize<List<ProfissionalResumoAgendamentoModel>>(
+                        reader.GetString(reader.GetOrdinal("PROFISSIONAIS"))) ?? new()
                 });
             }
 
