@@ -362,7 +362,7 @@ public class SecurityControllerTests
     public async Task FuncionamentoRejeitaUsuarioDiferenteDoToken()
     {
         var repository = new Mock<IFuncionamentoRepository>();
-        var controller = new FuncionamentoController(repository.Object)
+        var controller = new FuncionamentoController(repository.Object, Mock.Of<IVinculoRepository>())
         {
             ControllerContext = CriarContexto(8, "EMPRESA")
         };
