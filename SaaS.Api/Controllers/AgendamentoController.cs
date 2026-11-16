@@ -518,7 +518,10 @@ namespace SaaS.Api.Controllers
                        CASE WHEN @Status = 'CONCLUIDO'
                             THEN 'Agendamento concluído'
                             ELSE 'Agendamento cancelado' END,
-                       AUTOR.NOME_USUARIO || ' alterou o agendamento #' ||
+                       AUTOR.NOME_USUARIO ||
+                       CASE WHEN @Status = 'CANCELADO'
+                            THEN ' cancelou o agendamento #'
+                            ELSE ' alterou o agendamento #' END ||
                        A.ID_AGENDAMENTO::text || ' (' ||
                        COALESCE((
                            SELECT STRING_AGG(SV.NOME_SERVICO, ' + ' ORDER BY SV.ID_SERVICO)
@@ -526,9 +529,9 @@ namespace SaaS.Api.Controllers
                            JOIN SERVICOS SV ON SV.ID_SERVICO = ATS.SERVICO_FK
                            WHERE ATS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
                        ), S.NOME_SERVICO) ||
-                       ') para ' ||
-                       CASE WHEN @Status = 'CONCLUIDO' THEN 'concluído' ELSE 'cancelado' END ||
-                       '.',
+                       CASE WHEN @Status = 'CONCLUIDO'
+                            THEN ') para concluído.'
+                            ELSE ').' END,
                        A.DATA_AGENDAMENTO,
                        'STATUS_' || @Status
                 FROM AGENDAMENTOS A
