@@ -523,6 +523,36 @@ public class AgendamentoControllerTests
         repository.Verify(r => r.CriarAgendamentoAsync(It.Is<AgendamentoModel>(a => a.ClienteId == 4)), Times.Once);
     }
 
+    [Fact]
+    public async Task ProfissionalVinculadoPodeConsultarFuncionamentoDaEmpresa()
+    {
+        var configuracao = new FuncionamentoConfigModel { UsuarioFk = 7 };
+        var repo = new Mock<IFuncionamentoRepository>();
+        repo.Setup(x => x.ObterFuncionamento(7)).ReturnsAsync(configuracao);
+        var vinculos = new Mock<IVinculoRepository>();
+        vinculos.Setup(x => x.ObterVinculoAtualDoProfissionalAsync(21))
+            .ReturnsAsync(new VinculoProfissionalModel { EmpresaId = 7, VinculoStatus = "APROVADO" });
+        var controller = new FuncionamentoController(repo.Object, vinculos.Object)
+        { ControllerContext = CreateControllerContext(21, "PROFISSIONAL") };
+
+        Assert.IsType<OkObjectResult>(await controller.ObterFuncionamento(7));
+        repo.Verify(x => x.ObterFuncionamento(7), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProfissionalNaoPodeConsultarFuncionamentoDeOutraEmpresa()
+    {
+        var repo = new Mock<IFuncionamentoRepository>();
+        var vinculos = new Mock<IVinculoRepository>();
+        vinculos.Setup(x => x.ObterVinculoAtualDoProfissionalAsync(21))
+            .ReturnsAsync(new VinculoProfissionalModel { EmpresaId = 7, VinculoStatus = "APROVADO" });
+        var controller = new FuncionamentoController(repo.Object, vinculos.Object)
+        { ControllerContext = CreateControllerContext(21, "PROFISSIONAL") };
+
+        Assert.IsType<ForbidResult>(await controller.ObterFuncionamento(8));
+        repo.Verify(x => x.ObterFuncionamento(It.IsAny<int>()), Times.Never);
+    }
+
     private static ControllerContext CreateControllerContext(int usuarioId, string papel = "CLIENTE")
     {
         var identity = new ClaimsIdentity(
