@@ -11,18 +11,28 @@ namespace SaaS.Api.Controllers
     public class FuncionamentoController : ControllerBase
     {
         private readonly IFuncionamentoRepository _funcionamentoRepository;
+        private readonly IVinculoRepository _vinculoRepository;
 
-        public FuncionamentoController(IFuncionamentoRepository funcionamentoRepository)
+        public FuncionamentoController(IFuncionamentoRepository funcionamentoRepository, IVinculoRepository vinculoRepository)
         {
             _funcionamentoRepository = funcionamentoRepository;
+            _vinculoRepository = vinculoRepository;
         }
 
         [HttpGet("{usuarioId:int}")]
-        [Authorize(Roles = "EMPRESA,AUTONOMO")]
+        [Authorize(Roles = "EMPRESA,AUTONOMO,PROFISSIONAL")]
         public async Task<IActionResult> ObterFuncionamento(int usuarioId)
         {
             if (!User.EhProprioUsuario(usuarioId))
-                return Forbid();
+            {
+                if (!User.IsInRole("PROFISSIONAL") ||
+                    !User.TryGetUsuarioId(out var profissionalId))
+                    return Forbid();
+
+                var vinculo = await _vinculoRepository.ObterVinculoAtualDoProfissionalAsync(profissionalId);
+                if (vinculo?.VinculoStatus != "APROVADO" || vinculo.EmpresaId != usuarioId)
+                    return Forbid();
+            }
 
             try
             {
