@@ -541,6 +541,10 @@ namespace SaaS.Api.Controllers
                 if (atendimento.ProfissionalId > 0)
                     usuariosNotificados.Add(atendimento.ProfissionalId);
 
+            foreach (var profissional in agendamento.Profissionais)
+                if (profissional.Id > 0)
+                    usuariosNotificados.Add(profissional.Id);
+
             var payload = new
             {
                 agendamento.Id,
