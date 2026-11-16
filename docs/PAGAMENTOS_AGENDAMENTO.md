@@ -15,8 +15,9 @@ Não altere tabelas de assinatura. As tabelas novas são:
 `CONFIGURACOES_PAGAMENTO`, `PAGAMENTOS_AGENDAMENTO`,
 `PAGAMENTOS_AGENDAMENTO_WEBHOOKS`.
 
-## 2. Render — novas variáveis de ambiente
-- `PagamentoAgendamento__FrontendBaseUrl=https://nexoelo.nexoceo.com.br`
+## 2. Render — configuração de ambiente
+- Não é necessária a variável `PagamentoAgendamento__FrontendBaseUrl`. A API utiliza a origem de produção `https://nexoelo.nexoceo.com.br` já cadastrada em `Cors__AllowedOrigins__0`, `Cors__AllowedOrigins__1` ou outra posição do array `Cors:AllowedOrigins`.
+- Garanta que o domínio esteja presente nessa lista de origens autorizadas; nenhuma variável de CORS precisa ser duplicada.
 - `PagamentoAgendamento__WebhookSecret=whsec_...` (segredo de **outro** endpoint webhook no painel Stripe).
 - A API reutiliza `Stripe__SecretKey` da conexão técnica Stripe já configurada.
 - Não alterar `Stripe__WebhookSecret` nem o endpoint das assinaturas.
