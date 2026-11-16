@@ -150,16 +150,35 @@ public sealed class PagamentosAgendamentoController : ControllerBase
     public async Task<IActionResult> ConectarStripe()
     {
         if (!User.TryGetUsuarioId(out var id)) return Unauthorized();
+        // Validar a URL antes de criar qualquer recurso na Stripe.
+        var frontend = FrontendBaseUrl();
         await using var conn = await OpenAsync();
         var (_, accountId) = await LerConfig(conn,id);
         if (string.IsNullOrWhiteSpace(accountId))
         {
             // Conta Express própria do estabelecimento. Não reutilizar o Customer das assinaturas.
-            var created = await new AccountService(StripeClient).CreateAsync(new AccountCreateOptions
+            Stripe.Account created;
+            try
             {
-                Type="express", Country="BR",
-                Metadata = new Dictionary<string,string> { ["nexoelo_recebedor_id"]=id.ToString() }
-            });
+                created = await new AccountService(StripeClient).CreateAsync(new AccountCreateOptions
+                {
+                    Type="express", Country="BR",
+                    Metadata = new Dictionary<string,string> { ["nexoelo_recebedor_id"]=id.ToString() }
+                });
+            }
+            catch (StripeException ex)
+            {
+                _logger.LogError(ex,
+                    "Stripe Connect recusou a criação de conta para recebedor {RecebedorId}; código {StripeCode}",
+                    id, ex.StripeError?.Code);
+                var message = ex.Message.Contains("Accounts v1", StringComparison.OrdinalIgnoreCase)
+                    ? "Sua conta Stripe ainda não permite a criação de contas Connect pela API Accounts v1. Habilite compatibilidade com Accounts v1 nas configurações da Stripe ou migre esta integração para Accounts v2."
+                    : ex.Message.Contains("Connect", StringComparison.OrdinalIgnoreCase)
+                    ? "A Stripe não autorizou a criação da conta Connect. Verifique se o Connect está habilitado para sua plataforma e ambiente de testes."
+                    : "A Stripe recusou a criação da conta recebedora. Consulte os logs da API e os registros de requisições no painel Stripe.";
+                return StatusCode(StatusCodes.Status422UnprocessableEntity,
+                    new { erro = message, codigo = ex.StripeError?.Code ?? "stripe_connect_error" });
+            }
             accountId = created.Id;
             await using var update = new NpgsqlCommand(@"
                 INSERT INTO CONFIGURACOES_PAGAMENTO(USUARIO_FK,STRIPE_CONNECTED_ACCOUNT_ID)
@@ -174,15 +193,26 @@ public sealed class PagamentosAgendamentoController : ControllerBase
             // Se houve conexão simultânea, considerar sempre a conta já persistida.
             (_,accountId) = await LerConfig(conn,id);
         }
-        var frontend = FrontendBaseUrl();
         var basePath = User.IsInRole("EMPRESA") ? "/empresa/pagamentos" : "/autonomo/pagamentos";
-        var link = await new AccountLinkService(StripeClient).CreateAsync(new AccountLinkCreateOptions
+        try
         {
-            Account=accountId, Type="account_onboarding",
-            RefreshUrl=frontend+basePath+"?stripe=renovar",
-            ReturnUrl=frontend+basePath+"?stripe=retorno"
-        });
-        return Ok(new { url=link.Url });
+            var link = await new AccountLinkService(StripeClient).CreateAsync(new AccountLinkCreateOptions
+            {
+                Account=accountId, Type="account_onboarding",
+                RefreshUrl=frontend+basePath+"?stripe=renovar",
+                ReturnUrl=frontend+basePath+"?stripe=retorno"
+            });
+            return Ok(new { url=link.Url });
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogError(ex,
+                "Stripe Connect recusou link de onboarding para recebedor {RecebedorId}; código {StripeCode}",
+                id, ex.StripeError?.Code);
+            return StatusCode(StatusCodes.Status422UnprocessableEntity,
+                new { erro = "Não foi possível gerar o link de cadastro da Stripe. Consulte os logs do backend para identificar a restrição da conta.",
+                    codigo = ex.StripeError?.Code ?? "stripe_onboarding_error" });
+        }
     }
 
     private async Task<Cobranca?> LerCobranca(NpgsqlConnection conn, int agendamentoId)
