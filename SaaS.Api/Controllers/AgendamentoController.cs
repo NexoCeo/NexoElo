@@ -415,6 +415,20 @@ namespace SaaS.Api.Controllers
                     model.Status);
 
                 var responsavelId = agendamento.EmpresaId ?? agendamento.ProfissionalId;
+                if (agendamento.StatusAlterado &&
+                    (agendamento.Status == "CONCLUIDO" || agendamento.Status == "CANCELADO"))
+                {
+                    try
+                    {
+                        await RegistrarNotificacoesMudancaStatusAsync(agendamento, usuarioId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "Falha ao registrar notificacoes da alteracao de status do agendamento {AgendamentoId}",
+                            agendamento.Id);
+                    }
+                }
                 try
                 {
                     if (responsavelId.GetValueOrDefault() > 0)
@@ -490,6 +504,62 @@ namespace SaaS.Api.Controllers
         }
 
 
+        private async Task RegistrarNotificacoesMudancaStatusAsync(AgendamentoModel agendamento, int autorId)
+        {
+            // Conclusao/cancelamento podem envolver diferentes profissionais.
+            // Notificar a empresa e os participantes, exceto quem realizou a acao.
+            // O banco deduplica o evento por agendamento, destinatario e status.
+            const string sql = @"
+                INSERT INTO NOTIFICACOES_AGENDAMENTO
+                    (AGENDAMENTO_ID, DESTINATARIO_USUARIO_ID, TITULO, MENSAGEM,
+                     DATA_AGENDAMENTO, EVENTO_TIPO)
+                SELECT A.ID_AGENDAMENTO,
+                       DESTINATARIOS.ID_USUARIO,
+                       CASE WHEN @Status = 'CONCLUIDO'
+                            THEN 'Agendamento concluído'
+                            ELSE 'Agendamento cancelado' END,
+                       AUTOR.NOME_USUARIO || ' alterou o agendamento #' ||
+                       A.ID_AGENDAMENTO::text || ' (' ||
+                       COALESCE((
+                           SELECT STRING_AGG(SV.NOME_SERVICO, ' + ' ORDER BY SV.ID_SERVICO)
+                           FROM AGENDAMENTO_SERVICOS ATS
+                           JOIN SERVICOS SV ON SV.ID_SERVICO = ATS.SERVICO_FK
+                           WHERE ATS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                       ), S.NOME_SERVICO) ||
+                       ') para ' ||
+                       CASE WHEN @Status = 'CONCLUIDO' THEN 'concluído' ELSE 'cancelado' END ||
+                       '.',
+                       A.DATA_AGENDAMENTO,
+                       'STATUS_' || @Status
+                FROM AGENDAMENTOS A
+                JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
+                JOIN USUARIOS AUTOR ON AUTOR.ID_USUARIO = @AutorId
+                CROSS JOIN LATERAL (
+                    SELECT S.USUARIO_FK AS ID_USUARIO
+                    UNION
+                    SELECT A.PRESTADOR_FK
+                    UNION
+                    SELECT APS.PROFISSIONAL_FK
+                    FROM AGENDAMENTO_SERVICOS APS
+                    WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                      AND APS.PROFISSIONAL_FK IS NOT NULL
+                ) DESTINATARIOS
+                JOIN USUARIOS DESTINO ON DESTINO.ID_USUARIO = DESTINATARIOS.ID_USUARIO
+                WHERE A.ID_AGENDAMENTO = @AgendamentoId
+                  AND DESTINATARIOS.ID_USUARIO <> @AutorId
+                  AND DESTINO.TIPO_USUARIO IN ('EMPRESA','AUTONOMO','PROFISSIONAL')
+                ON CONFLICT (AGENDAMENTO_ID, DESTINATARIO_USUARIO_ID, EVENTO_TIPO)
+                DO NOTHING";
+
+            await using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@AgendamentoId", agendamento.Id);
+            command.Parameters.AddWithValue("@AutorId", autorId);
+            command.Parameters.AddWithValue("@Status", agendamento.Status);
+            await command.ExecuteNonQueryAsync();
+        }
+
         private async Task RegistrarNotificacoesClienteAsync(int agendamentoId)
         {
             // Apenas agendamentos criados por CLIENTE chegam aqui.
@@ -517,7 +587,7 @@ namespace SaaS.Api.Controllers
                     SELECT A.PRESTADOR_FK WHERE U.TIPO_USUARIO = 'EMPRESA'
                 ) destinatario
                 WHERE A.ID_AGENDAMENTO = @id
-                ON CONFLICT (AGENDAMENTO_ID, DESTINATARIO_USUARIO_ID) DO NOTHING";
+                ON CONFLICT (AGENDAMENTO_ID, DESTINATARIO_USUARIO_ID, EVENTO_TIPO) DO NOTHING";
             await using var con = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
             await con.OpenAsync();
             await using var cmd = new NpgsqlCommand(sql, con);
