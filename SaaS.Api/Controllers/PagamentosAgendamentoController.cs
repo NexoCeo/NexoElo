@@ -323,6 +323,51 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         return Ok(new {url=checkout.Url});
     }
 
+    [HttpGet("pendentes")]
+    [Authorize(Roles="EMPRESA,AUTONOMO")]
+    public async Task<IActionResult> ListarPendentes()
+    {
+        if(!User.TryGetUsuarioId(out var recebedor)) return Unauthorized();
+        await using var conn=await OpenAsync();
+        await using var cmd=new NpgsqlCommand(@"
+          SELECT P.AGENDAMENTO_FK, P.VALOR_CENTAVOS, A.DATA_AGENDAMENTO,
+                 U.NOME_USUARIO AS CLIENTE
+          FROM PAGAMENTOS_AGENDAMENTO P
+          JOIN AGENDAMENTOS A ON A.ID_AGENDAMENTO=P.AGENDAMENTO_FK
+          JOIN USUARIOS U ON U.ID_USUARIO=P.CLIENTE_USUARIO_FK
+          WHERE P.RECEBEDOR_USUARIO_FK=@id AND P.METODO='PRESENCIAL'
+            AND P.STATUS='PENDENTE' AND A.STATUS_AGENDAMENTO<>'CANCELADO'
+          ORDER BY A.DATA_AGENDAMENTO DESC LIMIT 100",conn);
+        cmd.Parameters.AddWithValue("id",recebedor);
+        var itens=new List<object>();
+        await using var rd=await cmd.ExecuteReaderAsync();
+        while(await rd.ReadAsync())
+            itens.Add(new { AgendamentoId=rd.GetInt32(0), Valor=rd.GetInt64(1)/100m,
+                DataAgendamento=rd.GetDateTime(2), Cliente=rd.GetString(3)});
+        return Ok(itens);
+    }
+
+    [HttpPatch("agendamento/{id:int}/confirmar-presencial")]
+    [Authorize(Roles="EMPRESA,AUTONOMO")]
+    public async Task<IActionResult> ConfirmarPresencial(int id)
+    {
+        if(!User.TryGetUsuarioId(out var recebedor)) return Unauthorized();
+        await using var conn=await OpenAsync();
+        // Apenas o recebedor associado à reserva pode confirmar o dinheiro em espécie,
+        // PIX ou cartão presencialmente. Nenhuma operação Stripe é executada aqui.
+        await using var cmd=new NpgsqlCommand(@"
+          UPDATE PAGAMENTOS_AGENDAMENTO P SET STATUS='PAGO',ATUALIZADO_EM=NOW()
+          FROM AGENDAMENTOS A
+          WHERE P.AGENDAMENTO_FK=@id AND A.ID_AGENDAMENTO=P.AGENDAMENTO_FK
+            AND P.RECEBEDOR_USUARIO_FK=@recebedor
+            AND P.METODO='PRESENCIAL' AND P.STATUS='PENDENTE'
+            AND A.STATUS_AGENDAMENTO <> 'CANCELADO'",conn);
+        cmd.Parameters.AddWithValue("id",id);
+        cmd.Parameters.AddWithValue("recebedor",recebedor);
+        return await cmd.ExecuteNonQueryAsync() == 1 ? NoContent() :
+            Conflict(new {erro="Pagamento não encontrado ou já confirmado."});
+    }
+
     [HttpPost("webhook")]
     [AllowAnonymous]
     public async Task<IActionResult> Webhook()
