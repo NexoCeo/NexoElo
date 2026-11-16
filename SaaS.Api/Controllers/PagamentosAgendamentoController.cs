@@ -31,6 +31,27 @@ public sealed class PagamentosAgendamentoController : ControllerBase
     private sealed record Cobranca(int AgendamentoId, int RecebedorId, int ClienteId, decimal Valor,
         string StatusAgendamento, string Modalidade, string? ContaStripe);
 
+    private string FrontendBaseUrl()
+    {
+        // Reutiliza somente a origem pública do frontend já autorizada no CORS.
+        // Nunca utilize diretamente uma origem fornecida pelo cliente (Origin/Referer),
+        // pois as URLs de retorno são transmitidas à Stripe.
+        var origins = _config.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        var found = origins
+            .Select(value => value?.Trim().TrimEnd('/'))
+            .Where(value => Uri.TryCreate(value, UriKind.Absolute, out var uri)
+                && uri.Scheme == Uri.UriSchemeHttps
+                && uri.Host.Equals("nexoelo.nexoceo.com.br", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (found.Length != 1)
+            throw new InvalidOperationException(
+                "Configure https://nexoelo.nexoceo.com.br em Cors:AllowedOrigins para o retorno dos pagamentos.");
+
+        return found[0]!;
+    }
+
     private string Required(string name) => !string.IsNullOrWhiteSpace(_config[name])
         ? _config[name]! : throw new InvalidOperationException("Configuração ausente: " + name);
 
@@ -153,7 +174,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
             // Se houve conexão simultânea, considerar sempre a conta já persistida.
             (_,accountId) = await LerConfig(conn,id);
         }
-        var frontend = Required("PagamentoAgendamento:FrontendBaseUrl").TrimEnd('/');
+        var frontend = FrontendBaseUrl();
         var basePath = User.IsInRole("EMPRESA") ? "/empresa/pagamentos" : "/autonomo/pagamentos";
         var link = await new AccountLinkService(StripeClient).CreateAsync(new AccountLinkCreateOptions
         {
@@ -290,7 +311,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
             else await rd.CloseAsync();
         }
 
-        var frontend=Required("PagamentoAgendamento:FrontendBaseUrl").TrimEnd('/');
+        var frontend=FrontendBaseUrl();
         var options=new SessionCreateOptions {
             Mode="payment",
             SuccessUrl=frontend+"/cliente-final/home?pagamento=retorno",
