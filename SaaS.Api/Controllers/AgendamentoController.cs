@@ -396,7 +396,7 @@ namespace SaaS.Api.Controllers
         }
 
         [HttpPatch("{agendamentoId:int}/status")]
-        [Authorize(Roles = nameof(TipoUsuario.CLIENTE) + "," + nameof(TipoUsuario.EMPRESA) + "," + nameof(TipoUsuario.AUTONOMO))]
+        [Authorize(Roles = nameof(TipoUsuario.CLIENTE) + "," + nameof(TipoUsuario.EMPRESA) + "," + nameof(TipoUsuario.AUTONOMO) + "," + nameof(TipoUsuario.PROFISSIONAL))]
         public async Task<IActionResult> AtualizarStatus(
             int agendamentoId,
             [FromBody] AtualizarStatusAgendamentoModel model)
