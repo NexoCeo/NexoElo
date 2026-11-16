@@ -17,7 +17,7 @@ public class NotificacoesAgendamentoController : ControllerBase
     public async Task<IActionResult> Listar()
     {
         if (!User.TryGetUsuarioId(out var usuarioId)) return Unauthorized();
-        const string sql = @"SELECT ID, AGENDAMENTO_ID, TITULO, MENSAGEM, DATA_AGENDAMENTO, LIDA
+        const string sql = @"SELECT ID, AGENDAMENTO_ID, TITULO, MENSAGEM, DATA_AGENDAMENTO, LIDA, CRIADA_EM
           FROM NOTIFICACOES_AGENDAMENTO
           WHERE DESTINATARIO_USUARIO_ID = @uid
           ORDER BY CRIADA_EM DESC LIMIT 100";
@@ -30,7 +30,8 @@ public class NotificacoesAgendamentoController : ControllerBase
         while (await reader.ReadAsync())
             result.Add(new { Id = reader.GetInt64(0), AgendamentoId = reader.GetInt32(1),
                 Titulo = reader.GetString(2), Mensagem = reader.GetString(3),
-                DataAgendamento = reader.GetDateTime(4), Lida = reader.GetBoolean(5) });
+                DataAgendamento = reader.GetDateTime(4), Lida = reader.GetBoolean(5),
+                CriadaEm = reader.GetDateTime(6) });
         return Ok(result);
     }
 
