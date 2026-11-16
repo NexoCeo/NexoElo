@@ -1030,6 +1030,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     await updateCommand.ExecuteNonQueryAsync();
                 }
 
+                agendamento.StatusAlterado = !string.Equals(statusAtual, statusDestino, StringComparison.OrdinalIgnoreCase);
                 agendamento.Status = statusDestino;
                 await transaction.CommitAsync();
                 return agendamento;
