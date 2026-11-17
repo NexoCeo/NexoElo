@@ -342,8 +342,16 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                 if(!string.IsNullOrWhiteSpace(session))
                 {
                     var existingSession=await new SessionService(StripeClient).GetAsync(session);
-                    if(existingSession.Status=="open" && !string.IsNullOrWhiteSpace(existingSession.Url))
-                        return Ok(new {url=existingSession.Url});
+                    if(existingSession.Status=="open" && existingSession.AmountTotal == cents
+                        && !string.IsNullOrWhiteSpace(existingSession.Url))
+                        return Ok(new {url=existingSession.Url,
+                            valorServico=valorServicoCentavos/100m, tarifa=tarifaCentavos/100m, total=cents/100m});
+                    // Sessões antigas sem a taxa visível não podem ser reutilizadas.
+                    if(existingSession.Status=="open" && existingSession.AmountTotal != cents)
+                    {
+                        await new SessionService(StripeClient).ExpireAsync(session);
+                        existingSession.Status = "expired";
+                    }
                     if(existingSession.Status != "expired" || existingSession.PaymentStatus == "paid")
                         return Conflict(new {erro="Aguardando a confirmação do pagamento anterior."});
                     tentativa++;
