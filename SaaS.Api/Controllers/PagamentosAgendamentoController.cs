@@ -305,7 +305,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                 var requestId = response.Headers.TryGetValues("Request-Id", out var requestIds)
                     ? requestIds.FirstOrDefault() : null;
                 _logger.LogError(
-                    "Stripe recusou onboarding v2 de {RecebedorId}. HTTP {Status}, código {StripeCode}, resposta {StripeResponse}, request ID {StripeRequestId}",
+                    "Stripe recusou onboarding v2 de {RecebedorId}. HTTP {Status}, código {StripeCode}, request ID {StripeRequestId}",
                     id, (int)response.StatusCode, code, requestId);
                 return StatusCode(StatusCodes.Status422UnprocessableEntity, new
                 {
