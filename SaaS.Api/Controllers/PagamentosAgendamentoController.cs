@@ -175,9 +175,15 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                     identity = new { country = "BR" },
                     configuration = new
                     {
-                        merchant = new
+                        recipient = new
                         {
-                            capabilities = new { card_payments = new { requested = true } }
+                            capabilities = new
+                            {
+                                stripe_balance = new
+                                {
+                                    stripe_transfers = new { requested = true }
+                                }
+                            }
                         }
                     },
                     defaults = new
@@ -194,7 +200,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                 {
                     Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
                 };
-                request.Headers.Add("Idempotency-Key", "nexoelo-connect-account-v2-" + id);
+                request.Headers.Add("Idempotency-Key", "nexoelo-connect-recipient-v2-" + id);
                 using var response = await client.SendAsync(request);
                 var json = await response.Content.ReadAsStringAsync();
                 if (!response.IsSuccessStatusCode)
@@ -203,18 +209,22 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                     try
                     {
                         using var error = JsonDocument.Parse(json);
-                        if (error.RootElement.TryGetProperty("error", out var item)
-                            && item.TryGetProperty("code", out var code))
-                            stripeCode = code.GetString();
+                        var item = error.RootElement;
+                        if (item.TryGetProperty("error", out var nested)
+                            && nested.ValueKind == JsonValueKind.Object) item = nested;
+                        if (item.TryGetProperty("code", out var code)) stripeCode = code.GetString();
                     }
                     catch (JsonException) { /* Resposta externa sem JSON válido. */ }
 
-                    _logger.LogError("Stripe Accounts v2 recusou criação do recebedor {RecebedorId}. HTTP {Status}, código {StripeCode}",
-                        id, (int)response.StatusCode, stripeCode);
+                    var requestId = response.Headers.TryGetValues("Request-Id", out var requestIds)
+                        ? requestIds.FirstOrDefault() : null;
+                    _logger.LogError("Stripe Accounts v2 recusou criação do recebedor {RecebedorId}. HTTP {Status}, código {StripeCode}, resposta {StripeResponse}, request ID {StripeRequestId}",
+                        id, (int)response.StatusCode, stripeCode, json, requestId);
                     return StatusCode(StatusCodes.Status422UnprocessableEntity, new
                     {
                         erro = "A Stripe não autorizou a criação da conta recebedora. Verifique os requisitos da plataforma Stripe Connect no ambiente selecionado.",
-                        codigo = stripeCode ?? "stripe_connect_account_v2_error"
+                        codigo = stripeCode ?? "stripe_connect_account_v2_error",
+                        stripeRequestId = requestId
                     });
                 }
 
@@ -248,22 +258,61 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         var basePath = User.IsInRole("EMPRESA") ? "/empresa/pagamentos" : "/autonomo/pagamentos";
         try
         {
-            var link = await new AccountLinkService(StripeClient).CreateAsync(new AccountLinkCreateOptions
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", Required("Stripe:SecretKey"));
+            client.DefaultRequestHeaders.Add("Stripe-Version", "2026-10-28.endive");
+            var payload = new
             {
-                Account=accountId, Type="account_onboarding",
-                RefreshUrl=frontend+basePath+"?stripe=renovar",
-                ReturnUrl=frontend+basePath+"?stripe=retorno"
-            });
-            return Ok(new { url=link.Url });
+                account = accountId,
+                use_case = new
+                {
+                    type = "account_onboarding",
+                    account_onboarding = new
+                    {
+                        configurations = new[] { "recipient" },
+                        refresh_url = frontend + basePath + "?stripe=renovar",
+                        return_url = frontend + basePath + "?stripe=retorno"
+                    }
+                }
+            };
+            using var response = await client.PostAsync("https://api.stripe.com/v2/core/account_links",
+                new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"));
+            var json = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                string? code = null;
+                try
+                {
+                    using var error = JsonDocument.Parse(json);
+                    var node = error.RootElement;
+                    if (node.TryGetProperty("error", out var nested) && nested.ValueKind == JsonValueKind.Object)
+                        node = nested;
+                    if (node.TryGetProperty("code", out var value)) code = value.GetString();
+                }
+                catch (JsonException) { }
+                var requestId = response.Headers.TryGetValues("Request-Id", out var requestIds)
+                    ? requestIds.FirstOrDefault() : null;
+                _logger.LogError(
+                    "Stripe recusou onboarding v2 de {RecebedorId}. HTTP {Status}, código {StripeCode}, resposta {StripeResponse}, request ID {StripeRequestId}",
+                    id, (int)response.StatusCode, code, json, requestId);
+                return StatusCode(StatusCodes.Status422UnprocessableEntity, new
+                {
+                    erro = "A Stripe recusou o cadastro da conta recebedora. Consulte o código e o request ID.",
+                    codigo = code ?? "stripe_onboarding_v2_error",
+                    stripeRequestId = requestId
+                });
+            }
+            using var result = JsonDocument.Parse(json);
+            if (!result.RootElement.TryGetProperty("url", out var url))
+                throw new InvalidOperationException("Stripe Accounts v2 não retornou URL de onboarding.");
+            return Ok(new { url = url.GetString() });
         }
-        catch (StripeException ex)
+        catch (HttpRequestException ex)
         {
-            _logger.LogError(ex,
-                "Stripe Connect recusou link de onboarding para recebedor {RecebedorId}; código {StripeCode}",
-                id, ex.StripeError?.Code);
-            return StatusCode(StatusCodes.Status422UnprocessableEntity,
-                new { erro = "Não foi possível gerar o link de cadastro da Stripe. Consulte os logs do backend para identificar a restrição da conta.",
-                    codigo = ex.StripeError?.Code ?? "stripe_onboarding_error" });
+            _logger.LogError(ex, "Erro de rede ao iniciar onboarding Stripe Connect de {RecebedorId}", id);
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { erro = "Falha de comunicação com a Stripe ao iniciar o cadastro." });
         }
     }
 
