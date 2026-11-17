@@ -27,7 +27,8 @@ public sealed class PagamentosAgendamentoController : ControllerBase
 
     public sealed record ModoPagamentoRequest(string Modalidade);
     public sealed record ConfiguracaoPagamentoResponse(string Modalidade, bool OnlineDisponivel,
-        bool ContaConectada, string? ContaStripe = null);
+        bool ContaConectada, string? ContaStripe = null,
+        int TarifaCartaoBps = 399, long TarifaCartaoFixaCentavos = 39);
     private sealed record Cobranca(int AgendamentoId, int RecebedorId, int ClienteId, decimal Valor,
         string StatusAgendamento, string Modalidade, string? ContaStripe);
 
@@ -104,7 +105,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         if (!await RecebedorAutorizado(conn, recebedorId)) return NotFound();
         var (modalidade, conta) = await LerConfig(conn, recebedorId);
         var online = (modalidade is "ONLINE" or "AMBOS") && await ContaApta(conta);
-        return Ok(new ConfiguracaoPagamentoResponse(modalidade, online, online));
+        return Ok(new ConfiguracaoPagamentoResponse(modalidade, online, online, null, TarifaPercentualBps(), TarifaFixaCentavos()));
     }
 
     [HttpGet("minha-configuracao")]
@@ -115,8 +116,8 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         await using var conn = await OpenAsync();
         var (modalidade, conta) = await LerConfig(conn,id);
         var apta = await ContaApta(conta);
-        return Ok(new ConfiguracaoPagamentoResponse(modalidade, apta && modalidade is "ONLINE" or "AMBOS",
-            apta, conta));
+        return Ok(new ConfiguracaoPagamentoResponse(modalidade, apta && (modalidade is "ONLINE" or "AMBOS"),
+            apta, conta, TarifaPercentualBps(), TarifaFixaCentavos()));
     }
 
     [HttpPut("minha-configuracao")]
@@ -238,6 +239,23 @@ public sealed class PagamentosAgendamentoController : ControllerBase
     }
 
     private static long Centavos(decimal valor) => checked((long)decimal.Round(valor*100,0,MidpointRounding.AwayFromZero));
+
+    // Tarifa de processamento estimada para cartão nacional: 3,99% + R$ 0,39.
+    // Permite atualizar a precificação sem alterar assinaturas ou valores de serviços.
+    // É obrigatório conferir as tarifas reais contratadas no Stripe antes da produção.
+    private int TarifaPercentualBps() => int.TryParse(_config["PagamentoAgendamento:TarifaCartaoBps"], out var bps)
+        && bps >= 0 && bps < 10000 ? bps : 399;
+    private long TarifaFixaCentavos() => long.TryParse(_config["PagamentoAgendamento:TarifaCartaoFixaCentavos"], out var valor)
+        && valor >= 0 ? valor : 39;
+
+    private (long Total, long Tarifa) CalcularCobrancaOnline(long valorServico)
+    {
+        if (valorServico <= 0) throw new ArgumentOutOfRangeException(nameof(valorServico));
+        // Arredonda para cima: o valor transferido ao prestador nunca é reduzido.
+        var total = checked((long)decimal.Ceiling(
+            (valorServico + TarifaFixaCentavos()) * 10000m / (10000 - TarifaPercentualBps())));
+        return (total, total - valorServico);
+    }
     private static bool Aberto(Cobranca pedido) => pedido.StatusAgendamento.Trim().Equals("AGENDADO",StringComparison.OrdinalIgnoreCase);
 
     [HttpGet("agendamento/{id:int}")]
@@ -295,8 +313,9 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         if (!Aberto(a)) return Conflict(new {erro="Agendamento não está ativo."});
         if (a.Modalidade is not ("ONLINE" or "AMBOS") || !await ContaApta(a.ContaStripe))
             return Conflict(new {erro="Pagamento online indisponível para este estabelecimento."});
-        var cents=Centavos(a.Valor);
-        if(cents<=0) return BadRequest(new {erro="Valor de cobrança inválido."});
+        var valorServicoCentavos=Centavos(a.Valor);
+        if(valorServicoCentavos<=0) return BadRequest(new {erro="Valor de cobrança inválido."});
+        var (cents, tarifaCentavos)=CalcularCobrancaOnline(valorServicoCentavos);
 
         await using var transaction=await conn.BeginTransactionAsync();
         // Impede checkouts concorrentes do mesmo agendamento.
@@ -350,13 +369,22 @@ public sealed class PagamentosAgendamentoController : ControllerBase
             Metadata=new Dictionary<string,string> {["agendamento_id"]=id.ToString(),
                 ["recebedor_id"]=a.RecebedorId.ToString()},
             PaymentIntentData=new SessionPaymentIntentDataOptions {
-                TransferData=new SessionPaymentIntentDataTransferDataOptions {Destination=a.ContaStripe}
+                TransferData=new SessionPaymentIntentDataTransferDataOptions {Destination=a.ContaStripe, Amount=valorServicoCentavos}
             },
+            // O checkout informa separadamente valor do serviço e custo do pagamento online.
+            // O valor a transferir permanece igual ao preço cadastrado pelo prestador.
+            PaymentMethodTypes=new List<string> { "card" },
             LineItems=new List<SessionLineItemOptions> {
                 new() { Quantity=1, PriceData=new SessionLineItemPriceDataOptions {
-                    Currency="brl",UnitAmount=cents,
+                    Currency="brl",UnitAmount=valorServicoCentavos,
                     ProductData=new SessionLineItemPriceDataProductDataOptions {
                         Name="Serviços do agendamento #"+id
+                    }
+                }},
+                new() { Quantity=1, PriceData=new SessionLineItemPriceDataOptions {
+                    Currency="brl",UnitAmount=tarifaCentavos,
+                    ProductData=new SessionLineItemPriceDataProductDataOptions {
+                        Name="Custo do pagamento online"
                     }
                 }}
             }
@@ -383,7 +411,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                 return Conflict(new {erro="Outro pagamento já foi registrado."});
         }
         await transaction.CommitAsync();
-        return Ok(new {url=checkout.Url});
+        return Ok(new {url=checkout.Url, valorServico=valorServicoCentavos/100m, tarifa=tarifaCentavos/100m, total=cents/100m});
     }
 
     [HttpGet("pendentes")]
