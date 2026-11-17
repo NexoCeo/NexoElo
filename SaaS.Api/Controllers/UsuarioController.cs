@@ -4,6 +4,8 @@ using SaaS.Application.Interfaces.Services;
 using SaaS.Application.Exceptions;
 using SaaS.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using SaaS.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -403,6 +405,51 @@ namespace SaaS.Api.Controllers
             {
                 return StatusCode(500, "Nao foi possivel atualizar os dados.");
             }
+        }
+
+        /// <summary>
+        /// Troca a senha do cliente autenticado somente depois de validar a senha atual.
+        /// O ID e obtido dos claims da sessao, nunca do payload.
+        /// </summary>
+        [HttpPost("cliente/alterar-senha")]
+        [Authorize(Roles = "CLIENTE")]
+        [EnableRateLimiting("password-recovery")]
+        public async Task<IActionResult> AlterarSenhaCliente(
+            [FromBody] AlterarSenhaClienteModel? request,
+            [FromServices] IPasswordHasher<UsuarioModel> passwordHasher)
+        {
+            if (!User.TryGetUsuarioId(out var usuarioId))
+                return Unauthorized(new { message = "Sessao invalida." });
+
+            if (request == null ||
+                string.IsNullOrEmpty(request.SenhaAtual) ||
+                string.IsNullOrEmpty(request.ConfirmarSenhaAtual) ||
+                string.IsNullOrEmpty(request.NovaSenha))
+                return BadRequest(new { message = "Informe a senha atual, sua confirmacao e a nova senha." });
+
+            if (!string.Equals(request.SenhaAtual, request.ConfirmarSenhaAtual, StringComparison.Ordinal))
+                return BadRequest(new { message = "A confirmacao da senha atual nao confere." });
+
+            if (request.NovaSenha.Length < 8)
+                return BadRequest(new { message = "A nova senha deve ter pelo menos 8 caracteres." });
+
+            if (string.Equals(request.SenhaAtual, request.NovaSenha, StringComparison.Ordinal))
+                return BadRequest(new { message = "A nova senha deve ser diferente da senha atual." });
+
+            var usuario = await _usuarioRepository.ListarUsuarioPorId(usuarioId);
+            if (usuario == null || usuario.TipoUsuario != TipoUsuario.CLIENTE)
+                return NotFound(new { message = "Conta nao encontrada." });
+
+            var verificacao = passwordHasher.VerifyHashedPassword(usuario, usuario.Senha, request.SenhaAtual);
+            var senhaLegadaCorreta = verificacao == PasswordVerificationResult.Failed &&
+                LegacyPasswordHasher.VerificarSenha(request.SenhaAtual, usuario.Senha);
+
+            if (verificacao == PasswordVerificationResult.Failed && !senhaLegadaCorreta)
+                return BadRequest(new { message = "Senha atual incorreta." });
+
+            var novoHash = passwordHasher.HashPassword(usuario, request.NovaSenha);
+            await _usuarioRepository.AtualizarSenhaHash(usuarioId, novoHash);
+            return Ok(new { message = "Senha alterada com sucesso." });
         }
 
         // Empresa pode editar apenas os profissionais vinculados e aprovados.
