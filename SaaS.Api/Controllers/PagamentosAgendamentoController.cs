@@ -4,6 +4,9 @@ using Npgsql;
 using SaaS.Api.Security;
 using Stripe;
 using Stripe.Checkout;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 
 namespace SaaS.Api.Controllers;
 
@@ -157,30 +160,78 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         var (_, accountId) = await LerConfig(conn,id);
         if (string.IsNullOrWhiteSpace(accountId))
         {
-            // Conta Express própria do estabelecimento. Não reutilizar o Customer das assinaturas.
-            Stripe.Account created;
+            // Accounts v2: novas plataformas não podem criar contas via POST /v1/accounts.
+            // Mantém dashboard Express e utiliza os mesmos links de onboarding.
             try
             {
-                created = await new AccountService(StripeClient).CreateAsync(new AccountCreateOptions
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", Required("Stripe:SecretKey"));
+                client.DefaultRequestHeaders.Add("Stripe-Version", "2026-10-28.endive");
+
+                var payload = new
                 {
-                    Type="express", Country="BR",
-                    Metadata = new Dictionary<string,string> { ["nexoelo_recebedor_id"]=id.ToString() }
-                });
+                    dashboard = "express",
+                    identity = new { country = "BR" },
+                    configuration = new
+                    {
+                        merchant = new
+                        {
+                            capabilities = new { card_payments = new { requested = true } }
+                        }
+                    },
+                    defaults = new
+                    {
+                        responsibilities = new
+                        {
+                            fees_collector = "application",
+                            losses_collector = "application"
+                        }
+                    },
+                    metadata = new Dictionary<string, string> { ["nexoelo_recebedor_id"] = id.ToString() }
+                };
+                using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.stripe.com/v2/core/accounts")
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                };
+                request.Headers.Add("Idempotency-Key", "nexoelo-connect-account-v2-" + id);
+                using var response = await client.SendAsync(request);
+                var json = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
+                {
+                    string? stripeCode = null;
+                    try
+                    {
+                        using var error = JsonDocument.Parse(json);
+                        if (error.RootElement.TryGetProperty("error", out var item)
+                            && item.TryGetProperty("code", out var code))
+                            stripeCode = code.GetString();
+                    }
+                    catch (JsonException) { /* Resposta externa sem JSON válido. */ }
+
+                    _logger.LogError("Stripe Accounts v2 recusou criação do recebedor {RecebedorId}. HTTP {Status}, código {StripeCode}",
+                        id, (int)response.StatusCode, stripeCode);
+                    return StatusCode(StatusCodes.Status422UnprocessableEntity, new
+                    {
+                        erro = "A Stripe não autorizou a criação da conta recebedora. Verifique os requisitos da plataforma Stripe Connect no ambiente selecionado.",
+                        codigo = stripeCode ?? "stripe_connect_account_v2_error"
+                    });
+                }
+
+                using var createdAccount = JsonDocument.Parse(json);
+                if (!createdAccount.RootElement.TryGetProperty("id", out var accountElement)
+                    || string.IsNullOrWhiteSpace(accountElement.GetString()))
+                    throw new InvalidOperationException("Stripe Accounts v2 retornou resposta sem ID da conta.");
+
+                accountId = accountElement.GetString();
             }
-            catch (StripeException ex)
+            catch (HttpRequestException ex)
             {
-                _logger.LogError(ex,
-                    "Stripe Connect recusou a criação de conta para recebedor {RecebedorId}; código {StripeCode}",
-                    id, ex.StripeError?.Code);
-                var message = ex.Message.Contains("Accounts v1", StringComparison.OrdinalIgnoreCase)
-                    ? "Sua conta Stripe ainda não permite a criação de contas Connect pela API Accounts v1. Habilite compatibilidade com Accounts v1 nas configurações da Stripe ou migre esta integração para Accounts v2."
-                    : ex.Message.Contains("Connect", StringComparison.OrdinalIgnoreCase)
-                    ? "A Stripe não autorizou a criação da conta Connect. Verifique se o Connect está habilitado para sua plataforma e ambiente de testes."
-                    : "A Stripe recusou a criação da conta recebedora. Consulte os logs da API e os registros de requisições no painel Stripe.";
-                return StatusCode(StatusCodes.Status422UnprocessableEntity,
-                    new { erro = message, codigo = ex.StripeError?.Code ?? "stripe_connect_error" });
+                _logger.LogError(ex, "Falha de comunicação com Stripe Accounts v2 para {RecebedorId}", id);
+                return StatusCode(StatusCodes.Status502BadGateway,
+                    new { erro = "Não foi possível comunicar com a Stripe para criar a conta recebedora." });
             }
-            accountId = created.Id;
+
             await using var update = new NpgsqlCommand(@"
                 INSERT INTO CONFIGURACOES_PAGAMENTO(USUARIO_FK,STRIPE_CONNECTED_ACCOUNT_ID)
                 VALUES(@id,@conta)
