@@ -10,6 +10,7 @@ namespace SaaS.Domain.Models
         public int? ProfissionalId { get; set; }
         public int? EmpresaId { get; set; }
         public int ServicoId { get; set; }
+        public int ResponsavelId { get; set; }
         public List<int> ServicoIds { get; set; } = new();
         public List<AtendimentoProfissionalModel> Atendimentos { get; set; } = new();
         public DateTime DataAgendamento { get; set; }
@@ -25,6 +26,7 @@ namespace SaaS.Domain.Models
         public string ServicoNome { get; set; } = string.Empty;
         public string ProfissionalNome { get; set; } = string.Empty;
         public List<ProfissionalResumoAgendamentoModel> Profissionais { get; set; } = new();
+        public List<ServicoDetalhadoAgendamentoModel> ServicosDetalhados { get; set; } = new();
     }
 }
 
@@ -36,5 +38,16 @@ namespace SaaS.Domain.Models
         public int Id { get; set; }
         public string Nome { get; set; } = string.Empty;
         public string? FotoPerfil { get; set; }
+    }
+}
+
+namespace SaaS.Domain.Models
+{
+    public sealed class ServicoDetalhadoAgendamentoModel
+    {
+        public int Id { get; set; }
+        public string Nome { get; set; } = string.Empty;
+        public int? ProfissionalId { get; set; }
+        public string ProfissionalNome { get; set; } = string.Empty;
     }
 }

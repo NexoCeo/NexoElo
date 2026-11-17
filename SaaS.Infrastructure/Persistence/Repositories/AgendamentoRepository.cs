@@ -617,6 +617,23 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     FROM AGENDAMENTO_SERVICOS AS APS JOIN SERVICOS AS MS ON MS.ID_SERVICO = APS.SERVICO_FK
                     WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
                 ), S.NOME_SERVICO) AS NOME_SERVICO,
+                    COALESCE((
+                        SELECT jsonb_agg(
+                            jsonb_build_object(
+                                'Id', MS.ID_SERVICO,
+                                'Nome', MS.NOME_SERVICO,
+                                'ProfissionalId', COALESCE(APS.PROFISSIONAL_FK, A.PRESTADOR_FK),
+                                'ProfissionalNome', COALESCE(UP.NOME_USUARIO, PU.NOME_USUARIO))
+                            ORDER BY APS.INICIO_ATENDIMENTO NULLS LAST, MS.ID_SERVICO)
+                        FROM AGENDAMENTO_SERVICOS APS
+                        INNER JOIN SERVICOS MS ON MS.ID_SERVICO = APS.SERVICO_FK
+                        LEFT JOIN USUARIOS UP ON UP.ID_USUARIO = APS.PROFISSIONAL_FK
+                        WHERE APS.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                    ), jsonb_build_array(jsonb_build_object(
+                        'Id', S.ID_SERVICO,
+                        'Nome', S.NOME_SERVICO,
+                        'ProfissionalId', A.PRESTADOR_FK,
+                        'ProfissionalNome', PU.NOME_USUARIO))) AS SERVICOS_DETALHADOS,
                     S.USUARIO_FK AS RESPONSAVEL_FK,
                     PU.TIPO_USUARIO,
                     COALESCE((
@@ -1103,6 +1120,15 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             configureCommand(command);
 
             await using var reader = await command.ExecuteReaderAsync();
+            var servicosDetalhadosOrdinal = -1;
+            for (var i = 0; i < reader.FieldCount; i++)
+            {
+                if (string.Equals(reader.GetName(i), "SERVICOS_DETALHADOS", StringComparison.OrdinalIgnoreCase))
+                {
+                    servicosDetalhadosOrdinal = i;
+                    break;
+                }
+            }
 
             while (await reader.ReadAsync())
             {
@@ -1122,6 +1148,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     ProfissionalId = tipoUsuario is "PROFISSIONAL" or "AUTONOMO" ? prestadorId : null,
                     EmpresaId = responsavelId != prestadorId ? responsavelId : null,
                     ServicoId = reader.GetInt32(reader.GetOrdinal("SERVICO_FK")),
+                    ResponsavelId = responsavelId,
                     DataAgendamento = reader.GetDateTime(reader.GetOrdinal("DATA_AGENDAMENTO")),
                     Valor = valorServico,
                     Taxa = 0,
@@ -1135,7 +1162,11 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     DuracaoMinutos = reader.GetInt32(reader.GetOrdinal("DURACAO_MINUTOS")),
                     ProfissionalNome = reader.GetString(reader.GetOrdinal("PROFISSIONAL_NOME")),
                     Profissionais = System.Text.Json.JsonSerializer.Deserialize<List<ProfissionalResumoAgendamentoModel>>(
-                        reader.GetString(reader.GetOrdinal("PROFISSIONAIS"))) ?? new()
+                        reader.GetString(reader.GetOrdinal("PROFISSIONAIS"))) ?? new(),
+                    ServicosDetalhados = servicosDetalhadosOrdinal >= 0 && !reader.IsDBNull(servicosDetalhadosOrdinal)
+                        ? System.Text.Json.JsonSerializer.Deserialize<List<ServicoDetalhadoAgendamentoModel>>(
+                            reader.GetString(servicosDetalhadosOrdinal)) ?? new()
+                        : new()
                 });
             }
 
