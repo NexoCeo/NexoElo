@@ -296,7 +296,6 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                     type = "account_onboarding",
                     account_onboarding = new
                     {
-                        configurations = new[] { "merchant" },
                         refresh_url = frontend + basePath + "?stripe=renovar",
                         return_url = frontend + basePath + "?stripe=retorno"
                     }
@@ -308,6 +307,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
             if (!response.IsSuccessStatusCode)
             {
                 string? code = null;
+                var camposInvalidos = new List<string>();
                 try
                 {
                     using var error = JsonDocument.Parse(json);
@@ -315,17 +315,33 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                     if (node.TryGetProperty("error", out var nested) && nested.ValueKind == JsonValueKind.Object)
                         node = nested;
                     if (node.TryGetProperty("code", out var value)) code = value.GetString();
+                    if (node.TryGetProperty("invalid_fields", out var fields) && fields.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var field in fields.EnumerateArray())
+                        {
+                            if (field.ValueKind != JsonValueKind.Object) continue;
+                            var name = field.TryGetProperty("field", out var n) && n.ValueKind == JsonValueKind.String
+                                ? n.GetString() : null;
+                            var reason = field.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String
+                                ? m.GetString() : null;
+                            if (!string.IsNullOrWhiteSpace(name))
+                                camposInvalidos.Add(string.IsNullOrWhiteSpace(reason) ? name! : name + ": " + reason);
+                        }
+                    }
                 }
                 catch (JsonException) { }
                 var requestId = response.Headers.TryGetValues("Request-Id", out var requestIds)
                     ? requestIds.FirstOrDefault() : null;
                 _logger.LogError(
-                    "Stripe recusou onboarding v2 de {RecebedorId}. HTTP {Status}, código {StripeCode}, request ID {StripeRequestId}",
-                    id, (int)response.StatusCode, code, requestId);
+                    "Stripe recusou onboarding v2 de {RecebedorId}. HTTP {Status}, código {StripeCode}, campos inválidos {InvalidFields}, request ID {StripeRequestId}",
+                    id, (int)response.StatusCode, code, string.Join(" | ", camposInvalidos), requestId);
                 return StatusCode(StatusCodes.Status422UnprocessableEntity, new
                 {
-                    erro = "A Stripe recusou o cadastro da conta recebedora. Consulte o código e o request ID.",
+                    erro = code == "invalid_fields"
+                        ? "A Stripe rejeitou parâmetros do link de cadastro da conta recebedora."
+                        : "A Stripe recusou o cadastro da conta recebedora. Consulte o código e o request ID.",
                     codigo = code ?? "stripe_onboarding_v2_error",
+                    camposInvalidos,
                     stripeRequestId = requestId
                 });
             }
