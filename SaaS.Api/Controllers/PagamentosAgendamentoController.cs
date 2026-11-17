@@ -187,7 +187,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                 var payload = new
                 {
                     dashboard = "full",
-                    identity = new { country = "BR" },
+                    identity = new { country = "br", entity_type = User.IsInRole("EMPRESA") ? "company" : "individual" },
                     configuration = new
                     {
                         merchant = new
@@ -215,6 +215,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                 if (!response.IsSuccessStatusCode)
                 {
                     string? stripeCode = null;
+                    var camposInvalidos = new List<string>();
                     try
                     {
                         using var error = JsonDocument.Parse(json);
@@ -222,19 +223,33 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                         if (item.TryGetProperty("error", out var nested)
                             && nested.ValueKind == JsonValueKind.Object) item = nested;
                         if (item.TryGetProperty("code", out var code)) stripeCode = code.GetString();
+                        if (item.TryGetProperty("invalid_fields", out var fields) && fields.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var field in fields.EnumerateArray())
+                            {
+                                if (field.ValueKind != JsonValueKind.Object) continue;
+                                var name = field.TryGetProperty("field", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
+                                var reason = field.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null;
+                                if (!string.IsNullOrWhiteSpace(name))
+                                    camposInvalidos.Add(string.IsNullOrWhiteSpace(reason) ? name! : name + ": " + reason);
+                            }
+                        }
                     }
                     catch (JsonException) { /* Resposta externa sem JSON válido. */ }
 
                     var requestId = response.Headers.TryGetValues("Request-Id", out var requestIds)
                         ? requestIds.FirstOrDefault() : null;
-                    _logger.LogError("Stripe Accounts v2 recusou criação do recebedor {RecebedorId}. HTTP {Status}, código {StripeCode}, request ID {StripeRequestId}",
-                        id, (int)response.StatusCode, stripeCode, requestId);
+                    _logger.LogError("Stripe Accounts v2 recusou criação do recebedor {RecebedorId}. HTTP {Status}, código {StripeCode}, campos {CamposInvalidos}, request ID {StripeRequestId}",
+                        id, (int)response.StatusCode, stripeCode, string.Join(" | ", camposInvalidos), requestId);
                     return StatusCode(StatusCodes.Status422UnprocessableEntity, new
                     {
                         erro = stripeCode == "account_creation_losses_collector_unavailable"
                             ? "A Stripe rejeitou a responsabilidade por perdas da plataforma. Confirme que o deploy usa cobranças diretas e a configuração losses_collector: stripe."
-                            : "A Stripe não autorizou a criação da conta recebedora. Verifique os requisitos da plataforma Stripe Connect no ambiente selecionado.",
+                            : stripeCode == "invalid_fields"
+                                ? "A Stripe identificou campos inválidos na criação da conta recebedora."
+                                : "A Stripe não autorizou a criação da conta recebedora. Verifique os requisitos da plataforma Stripe Connect no ambiente selecionado.",
                         codigo = stripeCode ?? "stripe_connect_account_v2_error",
+                        camposInvalidos,
                         stripeRequestId = requestId
                     });
                 }
