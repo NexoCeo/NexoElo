@@ -381,7 +381,6 @@ public sealed class PagamentosAgendamentoController : ControllerBase
             },
             // O checkout informa separadamente valor do serviço e custo do pagamento online.
             // O valor a transferir permanece igual ao preço cadastrado pelo prestador.
-            PaymentMethodTypes=new List<string> { "card" },
             LineItems=new List<SessionLineItemOptions> {
                 new() { Quantity=1, PriceData=new SessionLineItemPriceDataOptions {
                     Currency="brl",UnitAmount=valorServicoCentavos,
