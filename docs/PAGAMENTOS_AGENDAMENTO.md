@@ -2,7 +2,7 @@
 
 ## Escopo
 - Assinaturas permanecem em `api/Assinatura` e não foram modificadas.
-- Pagamentos de serviços usam `api/pagamentos-agendamento`, com Stripe Connect Express como conta recebedora própria para EMPRESA/AUTONOMO.
+- Pagamentos de serviços usam `api/pagamentos-agendamento`, com Stripe Connect Accounts v2 (`POST /v2/core/accounts`, dashboard Express) como conta recebedora própria para EMPRESA/AUTONOMO.
 - Padrão: PRESENCIAL. As modalidades ONLINE e AMBOS somente podem ser ativadas após a Stripe habilitar cobranças e repasses na conta conectada.
 - Pagamentos online usam Stripe Checkout em modo `payment` e `payment_intent_data.transfer_data.destination` com `transfer_data.amount` igual ao valor original do serviço. A cobrança inclui uma linha separada de custo de processamento paga pelo cliente final.
 - O checkout online aceita cartão; pagamento presencial não sofre acréscimo pela plataforma.
@@ -26,7 +26,7 @@ Não altere tabelas de assinatura. As tabelas novas são:
 - Não alterar `Stripe__WebhookSecret` nem o endpoint das assinaturas.
 
 ## 3. Painel Stripe
-1. Ative Stripe Connect para a plataforma e verifique a elegibilidade de contas Express no Brasil.
+1. Ative Stripe Connect para a plataforma e verifique a elegibilidade de contas Express no Brasil. A criação das contas usa Accounts v2; não é necessário habilitar a criação legada Accounts v1.
 2. Configure um endpoint de webhook para **pagamentos de agendamentos**, separado do endpoint de assinatura:
    `https://nexoelo.onrender.com/api/pagamentos-agendamento/webhook`
 3. Selecione os eventos:
