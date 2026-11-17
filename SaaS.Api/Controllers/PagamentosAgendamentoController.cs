@@ -222,7 +222,9 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                         id, (int)response.StatusCode, stripeCode, requestId);
                     return StatusCode(StatusCodes.Status422UnprocessableEntity, new
                     {
-                        erro = "A Stripe não autorizou a criação da conta recebedora. Verifique os requisitos da plataforma Stripe Connect no ambiente selecionado.",
+                        erro = stripeCode == "account_creation_losses_collector_unavailable"
+                            ? "O Stripe Connect da NexoCeo ainda não está autorizado a assumir perdas de contas conectadas (losses_collector: application). A habilitação depende da Stripe; solicite a liberação ao suporte informando o Request ID. Não é uma falha no cadastro deste estabelecimento."
+                            : "A Stripe não autorizou a criação da conta recebedora. Verifique os requisitos da plataforma Stripe Connect no ambiente selecionado.",
                         codigo = stripeCode ?? "stripe_connect_account_v2_error",
                         stripeRequestId = requestId
                     });
