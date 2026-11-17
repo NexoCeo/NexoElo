@@ -4,8 +4,11 @@
 - Assinaturas permanecem em `api/Assinatura` e não foram modificadas.
 - Pagamentos de serviços usam `api/pagamentos-agendamento`, com Stripe Connect Express como conta recebedora própria para EMPRESA/AUTONOMO.
 - Padrão: PRESENCIAL. As modalidades ONLINE e AMBOS somente podem ser ativadas após a Stripe habilitar cobranças e repasses na conta conectada.
-- Pagamentos online usam Stripe Checkout em modo `payment` e `payment_intent_data.transfer_data.destination`, direcionando o recebimento ao estabelecimento.
-- **Atenção financeira:** nesta configuração de *destination charges*, a plataforma responde pelas taxas da Stripe/chargebacks conforme o modelo Connect contratado, mesmo quando o pagamento é transferido integralmente ao estabelecimento. Revisar custos e responsabilidade antes de ativar contas reais.
+- Pagamentos online usam Stripe Checkout em modo `payment` e `payment_intent_data.transfer_data.destination` com `transfer_data.amount` igual ao valor original do serviço. A cobrança inclui uma linha separada de custo de processamento paga pelo cliente final.
+- O checkout online aceita cartão; pagamento presencial não sofre acréscimo pela plataforma.
+- O backend calcula o total em centavos por gross-up: `ceil((valor_servico_centavos + tarifa_fixa_centavos) * 10000 / (10000 - tarifa_percentual_bps))`.
+- A precificação padrão de referência é **3,99% + R$ 0,39** (cartão nacional). Opcionalmente ajustar `PagamentoAgendamento__TarifaCartaoBps` e `PagamentoAgendamento__TarifaCartaoFixaCentavos` no Render à tarifa efetivamente contratada.
+- **Atenção financeira:** `destination charges` cobram taxas e eventuais disputas da conta da plataforma. O adicional cobrado ao cliente é uma estimativa, não uma transferência automática da tarifa da Stripe ao cliente. Cartões internacionais, métodos diferenciados, câmbio, disputas ou mudanças tarifárias podem gerar diferença a cargo da plataforma. Validar regras de cobrança adicional e política de reembolso antes da produção.
 
 ## 1. Banco (Neon)
 Execute manualmente **antes do deploy**:
@@ -38,7 +41,8 @@ Não altere tabelas de assinatura. As tabelas novas são:
 - Cliente: escolhe modalidade na confirmação do agendamento.
 - PRESENCIAL: reserva confirmada e pagamento fica PENDENTE; estabelecimento confirma manualmente o recebimento na própria página Pagamentos.
 - ONLINE: reserva criada e Checkout iniciado; pagamento fica PENDENTE até confirmação do webhook assinado. Se o checkout falhar ou for abandonado, o cliente pode retomá-lo pelo histórico.
-- A API calcula o valor dos serviços no banco, nunca utiliza preços enviados pelo navegador.
+- A API calcula o valor dos serviços no banco, nunca utiliza preços enviados pelo navegador. A prévia no frontend utiliza a mesma fórmula, mas não é fonte de confiança para a cobrança.
+- O valor enviado ao prestador é exatamente o valor dos serviços; o cliente final paga o total acrescido do custo de processamento informado antes do checkout.
 - O usuário que realiza o checkout deve ser o cliente proprietário da reserva; o recebedor é derivado do serviço vinculado à empresa/autônomo.
 - Nenhum pagamento de serviço é tratado pelos webhooks ou tabelas de assinatura.
 
