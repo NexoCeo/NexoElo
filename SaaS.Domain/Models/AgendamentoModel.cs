@@ -25,6 +25,9 @@ namespace SaaS.Domain.Models
         public string ClienteNome { get; set; } = string.Empty;
         public string ServicoNome { get; set; } = string.Empty;
         public string ProfissionalNome { get; set; } = string.Empty;
+        // Incluídos no histórico sem exigir uma segunda requisição por card.
+        public string? MetodoPagamento { get; set; }
+        public string? StatusPagamento { get; set; }
         public List<ProfissionalResumoAgendamentoModel> Profissionais { get; set; } = new();
         public List<ServicoDetalhadoAgendamentoModel> ServicosDetalhados { get; set; } = new();
     }

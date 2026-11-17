@@ -664,7 +664,13 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     ) PROF
                 ), jsonb_build_array(jsonb_build_object('Id', PU.ID_USUARIO,
                     'Nome', PU.NOME_USUARIO, 'FotoPerfil', PU.FOTO_PERFIL))) AS PROFISSIONAIS,
-                    CU.NOME_USUARIO AS CLIENTE_NOME
+                    CU.NOME_USUARIO AS CLIENTE_NOME,
+                    (SELECT P.METODO FROM PAGAMENTOS_AGENDAMENTO P
+                     WHERE P.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                     LIMIT 1) AS METODO_PAGAMENTO,
+                    (SELECT P.STATUS FROM PAGAMENTOS_AGENDAMENTO P
+                     WHERE P.AGENDAMENTO_FK = A.ID_AGENDAMENTO
+                     LIMIT 1) AS STATUS_PAGAMENTO
                 FROM AGENDAMENTOS A
                 INNER JOIN SERVICOS S ON S.ID_SERVICO = A.SERVICO_FK
                 LEFT JOIN CLIENTES C ON C.ID_CLIENTE = A.CLIENTE_FK
@@ -1121,13 +1127,17 @@ namespace SaaS.Infrastructure.Persistence.Repositories
 
             await using var reader = await command.ExecuteReaderAsync();
             var servicosDetalhadosOrdinal = -1;
+            var metodoPagamentoOrdinal = -1;
+            var statusPagamentoOrdinal = -1;
             for (var i = 0; i < reader.FieldCount; i++)
             {
-                if (string.Equals(reader.GetName(i), "SERVICOS_DETALHADOS", StringComparison.OrdinalIgnoreCase))
-                {
+                var columnName = reader.GetName(i);
+                if (string.Equals(columnName, "SERVICOS_DETALHADOS", StringComparison.OrdinalIgnoreCase))
                     servicosDetalhadosOrdinal = i;
-                    break;
-                }
+                if (string.Equals(columnName, "METODO_PAGAMENTO", StringComparison.OrdinalIgnoreCase))
+                    metodoPagamentoOrdinal = i;
+                if (string.Equals(columnName, "STATUS_PAGAMENTO", StringComparison.OrdinalIgnoreCase))
+                    statusPagamentoOrdinal = i;
             }
 
             while (await reader.ReadAsync())
@@ -1161,6 +1171,10 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     ServicoNome = reader.GetString(reader.GetOrdinal("NOME_SERVICO")),
                     DuracaoMinutos = reader.GetInt32(reader.GetOrdinal("DURACAO_MINUTOS")),
                     ProfissionalNome = reader.GetString(reader.GetOrdinal("PROFISSIONAL_NOME")),
+                    MetodoPagamento = metodoPagamentoOrdinal >= 0 && !reader.IsDBNull(metodoPagamentoOrdinal)
+                        ? reader.GetString(metodoPagamentoOrdinal) : null,
+                    StatusPagamento = statusPagamentoOrdinal >= 0 && !reader.IsDBNull(statusPagamentoOrdinal)
+                        ? reader.GetString(statusPagamentoOrdinal) : null,
                     Profissionais = System.Text.Json.JsonSerializer.Deserialize<List<ProfissionalResumoAgendamentoModel>>(
                         reader.GetString(reader.GetOrdinal("PROFISSIONAIS"))) ?? new(),
                     ServicosDetalhados = servicosDetalhadosOrdinal >= 0 && !reader.IsDBNull(servicosDetalhadosOrdinal)

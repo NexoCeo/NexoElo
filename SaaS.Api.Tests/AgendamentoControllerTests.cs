@@ -204,7 +204,8 @@ public class AgendamentoControllerTests
             .Setup(item => item.ListarHistoricoAgendamentos(4))
             .ReturnsAsync(new List<AgendamentoModel>
             {
-                new() { Id = 12, ClienteId = 4, ServicoNome = "Corte" }
+                new() { Id = 12, ClienteId = 4, ServicoNome = "Corte",
+                    MetodoPagamento = "PRESENCIAL", StatusPagamento = "PENDENTE" }
             });
 
         var controller = new AgendamentoController(
@@ -217,7 +218,10 @@ public class AgendamentoControllerTests
         };
 
         var allowed = await controller.GetHistoricoAgendamentos(4);
-        Assert.IsType<OkObjectResult>(allowed);
+        var ok = Assert.IsType<OkObjectResult>(allowed);
+        var history = Assert.IsType<List<AgendamentoModel>>(ok.Value);
+        Assert.Equal("PRESENCIAL", Assert.Single(history).MetodoPagamento);
+        Assert.Equal("PENDENTE", history[0].StatusPagamento);
 
         controller.ControllerContext = CreateControllerContext(5);
         var forbidden = await controller.GetHistoricoAgendamentos(4);
