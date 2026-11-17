@@ -90,12 +90,27 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         if (string.IsNullOrWhiteSpace(accountId)) return false;
         try
         {
-            var account = await new AccountService(StripeClient).GetAsync(accountId);
-            return account.ChargesEnabled && account.PayoutsEnabled;
+            // Accounts v2: validar a capability merchant, não os indicadores legados Accounts v1.
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", Required("Stripe:SecretKey"));
+            client.DefaultRequestHeaders.Add("Stripe-Version", "2026-10-28.endive");
+            var path = "https://api.stripe.com/v2/core/accounts/" + Uri.EscapeDataString(accountId)
+                + "?include%5B0%5D=configuration.merchant";
+            using var response = await client.GetAsync(path);
+            if (!response.IsSuccessStatusCode) return false;
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return doc.RootElement.TryGetProperty("configuration", out var configuration)
+                && configuration.TryGetProperty("merchant", out var merchant)
+                && merchant.ValueKind == JsonValueKind.Object
+                && merchant.TryGetProperty("capabilities", out var capabilities)
+                && capabilities.TryGetProperty("card_payments", out var card)
+                && card.TryGetProperty("status", out var status)
+                && status.GetString() == "active";
         }
-        catch (StripeException ex)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
         {
-            _logger.LogWarning(ex, "Não foi possível verificar a conta Stripe Connect.");
+            _logger.LogWarning(ex, "Não foi possível verificar as capabilities Stripe Connect.");
             return false;
         }
     }
@@ -161,7 +176,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         if (string.IsNullOrWhiteSpace(accountId))
         {
             // Accounts v2: novas plataformas não podem criar contas via POST /v1/accounts.
-            // Mantém dashboard Express e utiliza os mesmos links de onboarding.
+            // Cobrança direta com dashboard completo: a Stripe assume perdas, conforme a modalidade SaaS.
             try
             {
                 using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
@@ -171,27 +186,21 @@ public sealed class PagamentosAgendamentoController : ControllerBase
 
                 var payload = new
                 {
-                    dashboard = "express",
+                    dashboard = "full",
                     identity = new { country = "BR" },
                     configuration = new
                     {
-                        recipient = new
+                        merchant = new
                         {
-                            capabilities = new
-                            {
-                                stripe_balance = new
-                                {
-                                    stripe_transfers = new { requested = true }
-                                }
-                            }
+                            capabilities = new { card_payments = new { requested = true } }
                         }
                     },
                     defaults = new
                     {
                         responsibilities = new
                         {
-                            fees_collector = "application",
-                            losses_collector = "application"
+                            fees_collector = "stripe",
+                            losses_collector = "stripe"
                         }
                     },
                     metadata = new Dictionary<string, string> { ["nexoelo_recebedor_id"] = id.ToString() }
@@ -200,7 +209,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                 {
                     Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
                 };
-                request.Headers.Add("Idempotency-Key", "nexoelo-connect-recipient-v2-" + id);
+                request.Headers.Add("Idempotency-Key", "nexoelo-connect-direct-merchant-v2-" + id);
                 using var response = await client.SendAsync(request);
                 var json = await response.Content.ReadAsStringAsync();
                 if (!response.IsSuccessStatusCode)
@@ -223,7 +232,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                     return StatusCode(StatusCodes.Status422UnprocessableEntity, new
                     {
                         erro = stripeCode == "account_creation_losses_collector_unavailable"
-                            ? "O Stripe Connect da NexoCeo ainda não está autorizado a assumir perdas de contas conectadas (losses_collector: application). A habilitação depende da Stripe; solicite a liberação ao suporte informando o Request ID. Não é uma falha no cadastro deste estabelecimento."
+                            ? "A Stripe rejeitou a responsabilidade por perdas da plataforma. Confirme que o deploy usa cobranças diretas e a configuração losses_collector: stripe."
                             : "A Stripe não autorizou a criação da conta recebedora. Verifique os requisitos da plataforma Stripe Connect no ambiente selecionado.",
                         codigo = stripeCode ?? "stripe_connect_account_v2_error",
                         stripeRequestId = requestId
@@ -272,7 +281,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                     type = "account_onboarding",
                     account_onboarding = new
                     {
-                        configurations = new[] { "recipient" },
+                        configurations = new[] { "merchant" },
                         refresh_url = frontend + basePath + "?stripe=renovar",
                         return_url = frontend + basePath + "?stripe=retorno"
                     }
@@ -443,7 +452,8 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                 if(status=="PAGO" || metodo!="ONLINE") return Conflict(new {erro="Pagamento já registrado."});
                 if(!string.IsNullOrWhiteSpace(session))
                 {
-                    var existingSession=await new SessionService(StripeClient).GetAsync(session);
+                    var existingSession=await new SessionService(StripeClient).GetAsync(session, null,
+                        new RequestOptions { StripeAccount = a.ContaStripe });
                     if(existingSession.Status=="open" && existingSession.AmountTotal == cents
                         && !string.IsNullOrWhiteSpace(existingSession.Url))
                         return Ok(new {url=existingSession.Url,
@@ -451,7 +461,8 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                     // Sessões antigas sem a taxa visível não podem ser reutilizadas.
                     if(existingSession.Status=="open" && existingSession.AmountTotal != cents)
                     {
-                        await new SessionService(StripeClient).ExpireAsync(session);
+                        await new SessionService(StripeClient).ExpireAsync(session, null,
+                            new RequestOptions { StripeAccount = a.ContaStripe });
                         existingSession.Status = "expired";
                     }
                     if(existingSession.Status != "expired" || existingSession.PaymentStatus == "paid")
@@ -478,11 +489,9 @@ public sealed class PagamentosAgendamentoController : ControllerBase
             ClientReferenceId=id.ToString(),
             Metadata=new Dictionary<string,string> {["agendamento_id"]=id.ToString(),
                 ["recebedor_id"]=a.RecebedorId.ToString()},
-            PaymentIntentData=new SessionPaymentIntentDataOptions {
-                TransferData=new SessionPaymentIntentDataTransferDataOptions {Destination=a.ContaStripe, Amount=valorServicoCentavos}
-            },
-            // O checkout informa separadamente valor do serviço e custo do pagamento online.
-            // O valor a transferir permanece igual ao preço cadastrado pelo prestador.
+            // Direct charge: a cobrança ocorre na conta Stripe do estabelecimento.
+            // O prestador recebe o total menos a tarifa da Stripe, compensada pelo acréscimo pago pelo cliente.
+            // Nenhum application_fee_amount é cobrado pela NexoCeo.
             LineItems=new List<SessionLineItemOptions> {
                 new() { Quantity=1, PriceData=new SessionLineItemPriceDataOptions {
                     Currency="brl",UnitAmount=valorServicoCentavos,
@@ -499,7 +508,8 @@ public sealed class PagamentosAgendamentoController : ControllerBase
             }
         };
         var checkout=await new SessionService(StripeClient).CreateAsync(options,
-            new RequestOptions {IdempotencyKey="nexoelo-agendamento-checkout-"+id+"-"+tentativa});
+            new RequestOptions {IdempotencyKey="nexoelo-agendamento-checkout-direct-"+id+"-"+tentativa,
+                StripeAccount=a.ContaStripe});
         await using(var insert=new NpgsqlCommand(@"
           INSERT INTO PAGAMENTOS_AGENDAMENTO
            (AGENDAMENTO_FK,RECEBEDOR_USUARIO_FK,CLIENTE_USUARIO_FK,VALOR_CENTAVOS,METODO,STATUS,STRIPE_SESSION_ID)
@@ -570,7 +580,16 @@ public sealed class PagamentosAgendamentoController : ControllerBase
 
     [HttpPost("webhook")]
     [AllowAnonymous]
-    public async Task<IActionResult> Webhook()
+    public Task<IActionResult> Webhook() => ProcessarWebhook(Required("PagamentoAgendamento:WebhookSecret"), false);
+
+    // Endpoint exclusivo para eventos dos estabelecimentos (Connected accounts).
+    // No Stripe Workbench, criar destino do tipo "Connected accounts" com signing secret próprio.
+    [HttpPost("webhook-connect")]
+    [AllowAnonymous]
+    public Task<IActionResult> WebhookConnect() =>
+        ProcessarWebhook(Required("PagamentoAgendamento:ConnectWebhookSecret"), true);
+
+    private async Task<IActionResult> ProcessarWebhook(string webhookSecret, bool conectado)
     {
         var signature=Request.Headers["Stripe-Signature"].ToString();
         if(string.IsNullOrEmpty(signature)) return BadRequest();
@@ -578,7 +597,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         Event stripeEvent;
         try
         {
-            stripeEvent=EventUtility.ConstructEvent(json,signature,Required("PagamentoAgendamento:WebhookSecret"));
+            stripeEvent=EventUtility.ConstructEvent(json,signature,webhookSecret);
         }
         catch(StripeException)
         {
@@ -586,6 +605,9 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         }
         if(stripeEvent.Data.Object is not Session session || session.Mode!="payment")
             return Ok();
+        // Rejeitar evento Connect recebido no endpoint da plataforma e vice-versa.
+        if(conectado != !string.IsNullOrWhiteSpace(stripeEvent.Account))
+            return BadRequest(new { erro = "Origem do evento Stripe inválida." });
         if(stripeEvent.Type is not ("checkout.session.completed" or
               "checkout.session.async_payment_succeeded" or "checkout.session.async_payment_failed"))
             return Ok();
@@ -596,6 +618,21 @@ public sealed class PagamentosAgendamentoController : ControllerBase
         var failed=stripeEvent.Type=="checkout.session.async_payment_failed";
         if(!paid && !failed) return Ok();
         await using var conn=await OpenAsync();
+        // A conta que processou a cobrança deve ser exatamente a conta do prestador.
+        if (conectado)
+        {
+            await using var accountCheck = new NpgsqlCommand(@"
+                SELECT EXISTS (
+                  SELECT 1 FROM PAGAMENTOS_AGENDAMENTO P
+                  JOIN CONFIGURACOES_PAGAMENTO CP ON CP.USUARIO_FK=P.RECEBEDOR_USUARIO_FK
+                  WHERE P.AGENDAMENTO_FK=@agendamento AND P.STRIPE_SESSION_ID=@session
+                    AND CP.STRIPE_CONNECTED_ACCOUNT_ID=@account
+                )", conn);
+            accountCheck.Parameters.AddWithValue("agendamento", agendamentoId);
+            accountCheck.Parameters.AddWithValue("session", session.Id);
+            accountCheck.Parameters.AddWithValue("account", stripeEvent.Account!);
+            if (!(bool)(await accountCheck.ExecuteScalarAsync() ?? false)) return Ok();
+        }
         await using var tx=await conn.BeginTransactionAsync();
         await using(var processed=new NpgsqlCommand(@"
           INSERT INTO PAGAMENTOS_AGENDAMENTO_WEBHOOKS(EVENT_ID) VALUES(@id)
