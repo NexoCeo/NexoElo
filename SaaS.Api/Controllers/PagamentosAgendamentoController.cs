@@ -218,8 +218,8 @@ public sealed class PagamentosAgendamentoController : ControllerBase
 
                     var requestId = response.Headers.TryGetValues("Request-Id", out var requestIds)
                         ? requestIds.FirstOrDefault() : null;
-                    _logger.LogError("Stripe Accounts v2 recusou criação do recebedor {RecebedorId}. HTTP {Status}, código {StripeCode}, resposta {StripeResponse}, request ID {StripeRequestId}",
-                        id, (int)response.StatusCode, stripeCode, json, requestId);
+                    _logger.LogError("Stripe Accounts v2 recusou criação do recebedor {RecebedorId}. HTTP {Status}, código {StripeCode}, request ID {StripeRequestId}",
+                        id, (int)response.StatusCode, stripeCode, requestId);
                     return StatusCode(StatusCodes.Status422UnprocessableEntity, new
                     {
                         erro = "A Stripe não autorizou a criação da conta recebedora. Verifique os requisitos da plataforma Stripe Connect no ambiente selecionado.",
@@ -295,7 +295,7 @@ public sealed class PagamentosAgendamentoController : ControllerBase
                     ? requestIds.FirstOrDefault() : null;
                 _logger.LogError(
                     "Stripe recusou onboarding v2 de {RecebedorId}. HTTP {Status}, código {StripeCode}, resposta {StripeResponse}, request ID {StripeRequestId}",
-                    id, (int)response.StatusCode, code, json, requestId);
+                    id, (int)response.StatusCode, code, requestId);
                 return StatusCode(StatusCodes.Status422UnprocessableEntity, new
                 {
                     erro = "A Stripe recusou o cadastro da conta recebedora. Consulte o código e o request ID.",
