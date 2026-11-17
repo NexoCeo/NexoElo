@@ -647,9 +647,10 @@ namespace SaaS.Infrastructure.Persistence.Repositories
             var nomeNormalizado = string.IsNullOrWhiteSpace(nome)
                 ? throw new ArgumentException("Informe o nome.")
                 : nome.Trim().ToUpperInvariant();
-            var emailNormalizado = NormalizarEmail(email)
-                ?? throw new ArgumentException("Informe o email.");
+            var emailNormalizado = NormalizarEmail(email);
             var telefoneNormalizado = NormalizarTelefone(telefone);
+            if (emailNormalizado == null && telefoneNormalizado == null)
+                throw new ArgumentException("Informe um email ou telefone.");
 
             await using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
@@ -670,7 +671,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     WHERE ID_USUARIO = @UsuarioId", connection, transaction);
 
                 updateCommand.Parameters.AddWithValue("@Nome", nomeNormalizado);
-                updateCommand.Parameters.AddWithValue("@Email", emailNormalizado);
+                updateCommand.Parameters.AddWithValue("@Email", (object?)emailNormalizado ?? DBNull.Value);
                 updateCommand.Parameters.AddWithValue(
                     "@Telefone",
                     (object?)telefoneNormalizado ?? DBNull.Value);

@@ -599,7 +599,7 @@ namespace SaaS.Api.Controllers
         [HttpPut("{id:int}/perfil")]
         [HttpPatch("{id:int}/perfil")]
         [Consumes("multipart/form-data")]
-        [Authorize(Roles = "EMPRESA,AUTONOMO,PROFISSIONAL")]
+        [Authorize(Roles = "EMPRESA,AUTONOMO,PROFISSIONAL,CLIENTE")]
         [RequestSizeLimit(26 * 1024 * 1024)]
         public async Task<IActionResult> AtualizarPerfil(int id, [FromForm] UpdatePerfilModel request)
         {
@@ -609,11 +609,16 @@ namespace SaaS.Api.Controllers
             if (request == null || string.IsNullOrWhiteSpace(request.Nome))
                 return BadRequest("Informe o nome.");
 
-            if (string.IsNullOrWhiteSpace(request.Email) ||
-                !MailAddress.TryCreate(request.Email.Trim(), out _))
-            {
+            var cliente = User.IsInRole(nameof(TipoUsuario.CLIENTE));
+            var possuiEmail = !string.IsNullOrWhiteSpace(request.Email);
+            var possuiTelefone = !string.IsNullOrWhiteSpace(request.Telefone);
+            if ((!cliente && !possuiEmail) ||
+                (possuiEmail && !MailAddress.TryCreate(request.Email.Trim(), out _)))
                 return BadRequest("Informe um email valido.");
-            }
+
+            // Clientes podem se cadastrar usando apenas o telefone.
+            if (cliente && !possuiEmail && !possuiTelefone)
+                return BadRequest("Informe um email ou telefone.");
 
             if (!string.IsNullOrWhiteSpace(request.Telefone))
             {
