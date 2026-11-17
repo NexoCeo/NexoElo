@@ -524,7 +524,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     ) PROF
                 ), jsonb_build_array(jsonb_build_object('Id', PU.ID_USUARIO,
                     'Nome', PU.NOME_USUARIO, 'FotoPerfil', PU.FOTO_PERFIL))) AS PROFISSIONAIS,
-                CU.NOME_USUARIO AS CLIENTE_NOME
+                CU.NOME_USUARIO AS CLIENTE_NOME,
+                CU.FOTO_PERFIL AS CLIENTE_FOTO_PERFIL
             FROM AGENDAMENTOS A
             INNER JOIN SERVICOS S
                 ON S.ID_SERVICO = A.SERVICO_FK
@@ -665,6 +666,7 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 ), jsonb_build_array(jsonb_build_object('Id', PU.ID_USUARIO,
                     'Nome', PU.NOME_USUARIO, 'FotoPerfil', PU.FOTO_PERFIL))) AS PROFISSIONAIS,
                     CU.NOME_USUARIO AS CLIENTE_NOME,
+                    CU.FOTO_PERFIL AS CLIENTE_FOTO_PERFIL,
                     (SELECT P.METODO FROM PAGAMENTOS_AGENDAMENTO P
                      WHERE P.AGENDAMENTO_FK = A.ID_AGENDAMENTO
                      LIMIT 1) AS METODO_PAGAMENTO,
@@ -790,7 +792,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     ) PROF
                 ), jsonb_build_array(jsonb_build_object('Id', PU.ID_USUARIO,
                     'Nome', PU.NOME_USUARIO, 'FotoPerfil', PU.FOTO_PERFIL))) AS PROFISSIONAIS,
-                CU.NOME_USUARIO AS CLIENTE_NOME
+                CU.NOME_USUARIO AS CLIENTE_NOME,
+                CU.FOTO_PERFIL AS CLIENTE_FOTO_PERFIL
             FROM AGENDAMENTOS A
             INNER JOIN SERVICOS S
                 ON S.ID_SERVICO = A.SERVICO_FK
@@ -1148,6 +1151,15 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                 var valorServico = reader.GetDecimal(reader.GetOrdinal("VALOR_SERVICO"));
                 var clienteUsuarioOrdinal = reader.GetOrdinal("CLIENTE_USUARIO_FK");
                 var clienteNomeOrdinal = reader.GetOrdinal("CLIENTE_NOME");
+                var clienteFotoOrdinal = -1;
+                for (var column = 0; column < reader.FieldCount; column++)
+                {
+                    if (string.Equals(reader.GetName(column), "CLIENTE_FOTO_PERFIL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        clienteFotoOrdinal = column;
+                        break;
+                    }
+                }
 
                 lista.Add(new AgendamentoModel
                 {
@@ -1168,6 +1180,8 @@ namespace SaaS.Infrastructure.Persistence.Repositories
                     ClienteNome = reader.IsDBNull(clienteNomeOrdinal)
                         ? string.Empty
                         : reader.GetString(clienteNomeOrdinal),
+                    ClienteFotoPerfil = clienteFotoOrdinal >= 0 && !reader.IsDBNull(clienteFotoOrdinal)
+                        ? reader.GetString(clienteFotoOrdinal) : null,
                     ServicoNome = reader.GetString(reader.GetOrdinal("NOME_SERVICO")),
                     DuracaoMinutos = reader.GetInt32(reader.GetOrdinal("DURACAO_MINUTOS")),
                     ProfissionalNome = reader.GetString(reader.GetOrdinal("PROFISSIONAL_NOME")),

@@ -23,6 +23,7 @@ namespace SaaS.Domain.Models
         public bool StatusAlterado { get; set; }
         public string? MotivoCancelamento { get; set; }
         public string ClienteNome { get; set; } = string.Empty;
+        public string? ClienteFotoPerfil { get; set; }
         public string ServicoNome { get; set; } = string.Empty;
         public string ProfissionalNome { get; set; } = string.Empty;
         // Incluídos no histórico sem exigir uma segunda requisição por card.
