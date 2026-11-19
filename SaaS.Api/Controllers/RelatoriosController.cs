@@ -36,19 +36,19 @@ public sealed class RelatoriosController : ControllerBase
         {
             var acesso = await _planos.ConsultarAsync(usuarioId);
             if (!acesso.AcessoAtivo || !acesso.RelatoriosLiberados)
-                return StatusCode(403, new { erro = "Relatorios disponiveis a partir do plano Intermediario." });
+                return StatusCode(403, new { erro = "Relatórios disponíveis a partir do plano Intermediário." });
         }
 
         if (!TipoRelatorioExtensions.TryFromRoute(tipo, out var tipoRelatorio))
         {
             return BadRequest(new
             {
-                erro = "Relatorio invalido. Use resumo-financeiro, servicos-mais-realizados ou agenda-mensal."
+                erro = "Relatório inválido. Use resumo-financeiro, servicos-mais-realizados ou agenda-mensal."
             });
         }
 
         if (ano is < 2000 or > 2100 || mes is < 1 or > 12)
-            return BadRequest(new { erro = "Informe um mes e um ano validos." });
+            return BadRequest(new { erro = "Informe um mês e um ano válidos." });
 
         try
         {
@@ -74,7 +74,7 @@ public sealed class RelatoriosController : ControllerBase
         }
         catch (Exception)
         {
-            return StatusCode(500, new { erro = "Nao foi possivel gerar o relatorio." });
+            return StatusCode(500, new { erro = "Não foi possível gerar o relatório." });
         }
     }
 }

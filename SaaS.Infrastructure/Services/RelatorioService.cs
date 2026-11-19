@@ -22,38 +22,38 @@ public sealed class RelatorioService : IRelatorioService
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["Faturamento"] = "Revenue",
-            ["Concluidos"] = "Completed",
-            ["Ticket medio"] = "Average ticket",
+            ["Concluídos"] = "Completed",
+            ["Ticket médio"] = "Average ticket",
             ["Cancelados"] = "Canceled",
             ["Faturamento por dia"] = "Daily revenue",
-            ["Nenhum atendimento concluido gerou faturamento neste periodo."] = "No completed appointments generated revenue during this period.",
+            ["Nenhum atendimento concluído gerou faturamento neste período."] = "No completed appointments generated revenue during this period.",
             ["Data"] = "Date",
             ["Atendimentos"] = "Appointments",
             ["Mais realizado"] = "Most booked",
             ["Sem dados"] = "No data",
-            ["Execucoes"] = "Completed appointments",
-            ["Servicos ativos"] = "Active services",
-            ["Ranking de servicos concluidos"] = "Ranking of completed services",
-            ["Nenhum servico foi concluido neste periodo."] = "No services were completed during this period.",
-            ["Servico"] = "Service",
-            ["Participacao"] = "Share",
+            ["Execuções"] = "Completed appointments",
+            ["Serviços ativos"] = "Active services",
+            ["Ranking de serviços concluídos"] = "Ranking of completed services",
+            ["Nenhum serviço foi concluído neste período."] = "No services were completed during this period.",
+            ["Serviço"] = "Service",
+            ["Participação"] = "Share",
             ["Total"] = "Total",
             ["Agendados"] = "Scheduled",
-            ["Agendamentos do periodo"] = "Appointments during this period",
-            ["Nenhum agendamento foi encontrado neste periodo."] = "No appointments were found during this period.",
+            ["Agendamentos do período"] = "Appointments during this period",
+            ["Nenhum agendamento foi encontrado neste período."] = "No appointments were found during this period.",
             ["Data e hora"] = "Date and time",
             ["Cliente"] = "Customer",
             ["Prestador"] = "Professional",
             ["Status"] = "Status",
             ["Valor"] = "Price",
             ["Resumo financeiro mensal"] = "Monthly financial summary",
-            ["Servicos mais realizados"] = "Most performed services",
+            ["Serviços mais realizados"] = "Most performed services",
             ["Agenda mensal"] = "Monthly calendar",
-            ["Valores calculados somente a partir de atendimentos concluidos."] = "Values calculated only from completed appointments.",
-            ["Ranking por quantidade de atendimentos concluidos no periodo."] = "Ranking by the number of completed appointments during this period.",
-            ["Visao consolidada de todos os agendamentos e seus status."] = "Overview of all appointments and their statuses.",
+            ["Valores calculados somente a partir de atendimentos concluídos."] = "Values calculated only from completed appointments.",
+            ["Ranking por quantidade de atendimentos concluídos no período."] = "Ranking by the number of completed appointments during this period.",
+            ["Visão consolidada de todos os agendamentos e seus status."] = "Overview of all appointments and their statuses.",
             ["Agendado"] = "Scheduled",
-            ["Concluido"] = "Completed",
+            ["Concluído"] = "Completed",
             ["Cancelado"] = "Canceled",
         };
 
@@ -127,7 +127,7 @@ public sealed class RelatorioService : IRelatorioService
                 .FontSize(12)
                 .SemiBold();
             column.Item().Text(
-                    $"{(IsEnglish ? "Period" : "Periodo")}: {dados.PeriodoInicio.ToString(IsEnglish ? "MM/dd/yyyy" : "dd/MM/yyyy")} {(IsEnglish ? "to" : "a")} {dados.PeriodoFim.ToString(IsEnglish ? "MM/dd/yyyy" : "dd/MM/yyyy")}")
+                    $"{(IsEnglish ? "Period" : "Período")}: {dados.PeriodoInicio.ToString(IsEnglish ? "MM/dd/yyyy" : "dd/MM/yyyy")} {(IsEnglish ? "to" : "a")} {dados.PeriodoFim.ToString(IsEnglish ? "MM/dd/yyyy" : "dd/MM/yyyy")}")
                 .FontColor(CorTextoSecundario);
             column.Item().PaddingTop(7).LineHorizontal(1).LineColor(CorBorda);
         });
@@ -165,8 +165,8 @@ public sealed class RelatorioService : IRelatorioService
         column.Item().Element(container => ComporIndicadores(container,
         [
             (L("Faturamento"), FormatarMoeda(dados.FaturamentoTotal)),
-            (L("Concluidos"), dados.TotalConcluidos.ToString(NumeroCulture)),
-            (L("Ticket medio"), FormatarMoeda(dados.TicketMedio)),
+            (L("Concluídos"), dados.TotalConcluidos.ToString(NumeroCulture)),
+            (L("Ticket médio"), FormatarMoeda(dados.TicketMedio)),
             (L("Cancelados"), dados.TotalCancelados.ToString(NumeroCulture))
         ]));
 
@@ -176,7 +176,7 @@ public sealed class RelatorioService : IRelatorioService
         {
             column.Item().Element(container => ComporEstadoVazio(
                 container,
-                "Nenhum atendimento concluido gerou faturamento neste periodo."));
+                "Nenhum atendimento concluído gerou faturamento neste período."));
             return;
         }
 
@@ -210,18 +210,18 @@ public sealed class RelatorioService : IRelatorioService
         column.Item().Element(container => ComporIndicadores(container,
         [
             (L("Mais realizado"), maisRealizado?.Nome ?? L("Sem dados")),
-            (L("Execucoes"), dados.TotalConcluidos.ToString(NumeroCulture)),
-            (L("Servicos ativos"), dados.Servicos.Count.ToString(NumeroCulture)),
+            (L("Execuções"), dados.TotalConcluidos.ToString(NumeroCulture)),
+            (L("Serviços ativos"), dados.Servicos.Count.ToString(NumeroCulture)),
             (L("Faturamento"), FormatarMoeda(dados.FaturamentoTotal))
         ]));
 
-        column.Item().Text(L("Ranking de servicos concluidos")).FontSize(13).SemiBold();
+        column.Item().Text(L("Ranking de serviços concluídos")).FontSize(13).SemiBold();
 
         if (dados.Servicos.Count == 0)
         {
             column.Item().Element(container => ComporEstadoVazio(
                 container,
-                "Nenhum servico foi concluido neste periodo."));
+                "Nenhum serviço foi concluído neste período."));
             return;
         }
 
@@ -239,9 +239,9 @@ public sealed class RelatorioService : IRelatorioService
             ComporCabecalhoTabela(
                 table,
                 "#",
-                "Servico",
-                "Execucoes",
-                "Participacao",
+                "Serviço",
+                "Execuções",
+                "Participação",
                 "Faturamento");
 
             for (var index = 0; index < dados.Servicos.Count; index++)
@@ -268,17 +268,17 @@ public sealed class RelatorioService : IRelatorioService
         [
             (L("Total"), dados.TotalAgendamentos.ToString(NumeroCulture)),
             (L("Agendados"), dados.TotalAgendados.ToString(NumeroCulture)),
-            (L("Concluidos"), dados.TotalConcluidos.ToString(NumeroCulture)),
+            (L("Concluídos"), dados.TotalConcluidos.ToString(NumeroCulture)),
             (L("Cancelados"), dados.TotalCancelados.ToString(NumeroCulture))
         ]));
 
-        column.Item().Text(L("Agendamentos do periodo")).FontSize(13).SemiBold();
+        column.Item().Text(L("Agendamentos do período")).FontSize(13).SemiBold();
 
         if (dados.Agendamentos.Count == 0)
         {
             column.Item().Element(container => ComporEstadoVazio(
                 container,
-                "Nenhum agendamento foi encontrado neste periodo."));
+                "Nenhum agendamento foi encontrado neste período."));
             return;
         }
 
@@ -299,7 +299,7 @@ public sealed class RelatorioService : IRelatorioService
                 "Data e hora",
                 "Cliente",
                 "Prestador",
-                "Servico",
+                "Serviço",
                 "Status",
                 "Valor");
 
@@ -356,7 +356,7 @@ public sealed class RelatorioService : IRelatorioService
                     .Background(CorPrimaria)
                     .PaddingVertical(7)
                     .PaddingHorizontal(6)
-                    .Text(titulo)
+                    .Text(L(titulo))
                     .FontSize(8)
                     .SemiBold()
                     .FontColor(Colors.White);
@@ -395,7 +395,7 @@ public sealed class RelatorioService : IRelatorioService
             row.AutoItem().Text(text =>
             {
                 text.DefaultTextStyle(style => style.FontSize(8).FontColor(CorTextoSecundario));
-                text.Span(IsEnglish ? "Page " : "Pagina ");
+                text.Span(IsEnglish ? "Page " : "Página ");
                 text.CurrentPageNumber();
                 text.Span(IsEnglish ? " of " : " de ");
                 text.TotalPages();
@@ -408,7 +408,7 @@ public sealed class RelatorioService : IRelatorioService
         return tipo switch
         {
             TipoRelatorio.RESUMO_FINANCEIRO => L("Resumo financeiro mensal"),
-            TipoRelatorio.SERVICOS_MAIS_REALIZADOS => L("Servicos mais realizados"),
+            TipoRelatorio.SERVICOS_MAIS_REALIZADOS => L("Serviços mais realizados"),
             TipoRelatorio.AGENDA_MENSAL => L("Agenda mensal"),
             _ => throw new ArgumentOutOfRangeException(nameof(tipo))
         };
@@ -419,11 +419,11 @@ public sealed class RelatorioService : IRelatorioService
         return tipo switch
         {
             TipoRelatorio.RESUMO_FINANCEIRO =>
-                "Valores calculados somente a partir de atendimentos concluidos.",
+                "Valores calculados somente a partir de atendimentos concluídos.",
             TipoRelatorio.SERVICOS_MAIS_REALIZADOS =>
-                "Ranking por quantidade de atendimentos concluidos no periodo.",
+                "Ranking por quantidade de atendimentos concluídos no período.",
             TipoRelatorio.AGENDA_MENSAL =>
-                "Visao consolidada de todos os agendamentos e seus status.",
+                "Visão consolidada de todos os agendamentos e seus status.",
             _ => throw new ArgumentOutOfRangeException(nameof(tipo))
         };
     }
@@ -438,7 +438,7 @@ public sealed class RelatorioService : IRelatorioService
         return status.Trim().ToUpperInvariant() switch
         {
             "AGENDADO" => L("Agendado"),
-            "CONCLUIDO" => L("Concluido"),
+            "CONCLUIDO" => L("Concluído"),
             "CANCELADO" => L("Cancelado"),
             _ => status
         };

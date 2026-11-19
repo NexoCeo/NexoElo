@@ -93,6 +93,70 @@ public sealed class RelatoriosTests
         Assert.Equal("%PDF", Encoding.ASCII.GetString(arquivo.Conteudo, 0, 4));
     }
 
+    [Theory]
+    [InlineData(TipoRelatorio.RESUMO_FINANCEIRO,
+        "Resumo financeiro mensal",
+        "Valores calculados somente a partir de atendimentos concluídos.")]
+    [InlineData(TipoRelatorio.SERVICOS_MAIS_REALIZADOS,
+        "Serviços mais realizados",
+        "Ranking por quantidade de atendimentos concluídos no período.")]
+    [InlineData(TipoRelatorio.AGENDA_MENSAL,
+        "Agenda mensal",
+        "Visão consolidada de todos os agendamentos e seus status.")]
+    public void TitulosEDescricoesPossuemAcentuacaoEmPortugues(
+        TipoRelatorio tipo, string tituloEsperado, string descricaoEsperada)
+    {
+        var culturaAnterior = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture =
+                System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+
+            var flags = BindingFlags.Static | BindingFlags.NonPublic;
+            var obterTitulo = typeof(RelatorioService).GetMethod("ObterTitulo", flags)!;
+            var obterDescricao = typeof(RelatorioService).GetMethod("ObterDescricao", flags)!;
+
+            Assert.Equal(tituloEsperado, obterTitulo.Invoke(null, [tipo]));
+            Assert.Equal(descricaoEsperada, obterDescricao.Invoke(null, [tipo]));
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = culturaAnterior;
+        }
+    }
+
+    [Theory]
+    [InlineData("Concluídos", "Completed")]
+    [InlineData("Ticket médio", "Average ticket")]
+    [InlineData("Execuções", "Completed appointments")]
+    [InlineData("Serviços ativos", "Active services")]
+    [InlineData("Ranking de serviços concluídos", "Ranking of completed services")]
+    [InlineData("Serviço", "Service")]
+    [InlineData("Participação", "Share")]
+    [InlineData("Agendamentos do período", "Appointments during this period")]
+    [InlineData("Concluído", "Completed")]
+    public void RotulosAcentuadosMantemTraducoesEmIngles(string portugues, string ingles)
+    {
+        var culturaAnterior = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            var localizador = typeof(RelatorioService).GetMethod(
+                "L", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+            System.Globalization.CultureInfo.CurrentUICulture =
+                System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+            Assert.Equal(portugues, localizador.Invoke(null, [portugues]));
+
+            System.Globalization.CultureInfo.CurrentUICulture =
+                System.Globalization.CultureInfo.GetCultureInfo("en-US");
+            Assert.Equal(ingles, localizador.Invoke(null, [portugues]));
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = culturaAnterior;
+        }
+    }
+
     private static ControllerContext CriarContexto(int usuarioId)
     {
         var identity = new ClaimsIdentity(
